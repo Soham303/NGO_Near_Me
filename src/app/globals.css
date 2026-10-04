@@ -1,27 +1,68 @@
+@import "leaflet/dist/leaflet.css";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --primary: #2E7D32;
+  --primary-light: #E8F5E9;
+  --primary-hover: #1B5E20;
+  --accent: #F57C00;
+  --urgency-green: #2E7D32;
+  --urgency-amber: #F9A825;
+  --urgency-red: #C62828;
+  --text-main: #1F2933;
+  --text-muted: #667085;
+  --border-color: #E4E7EC;
+  --bg-app: #FAFAF7;
 }
 
 body {
-  color: var(--foreground);
-  background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
+  color: var(--text-main);
+  background-color: var(--bg-app);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-@layer utilities {
-  .text-balance {
-    text-wrap: balance;
+/* Custom Urgency Pulse for Map Pins & Badges */
+@keyframes urgent-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(198, 40, 40, 0.6);
   }
+  70% {
+    box-shadow: 0 0 0 10px rgba(198, 40, 40, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(198, 40, 40, 0);
+  }
+}
+
+.pulse-urgent {
+  animation: urgent-pulse 2s infinite;
+}
+
+/* Leaflet Map overrides for smooth mobile feel */
+.leaflet-container {
+  width: 100%;
+  height: 100%;
+  z-index: 10;
+  font-family: inherit;
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #d0d5dd;
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #98a2b3;
 }

@@ -1,0 +1,214 @@
+Implementation Plan
+Version: 0.1 (draft). Timeline assumes 1–2 developers working full time on the proposed
+stack (Next.js + Supabase). Durations are estimates; adjust once team size is known.
+
+1. Delivery Strategy
+Build the thinnest end-to-end flow first (post → claim → collect → report), then layer the
+map, score, and public features on top.
+Ship to a small pilot early (about week 8) and tune the scoring with real data.
+Keep every feature behind the MVP scope in the PRD; defer everything else.
+
+2. Phases
+Phase 0: Setup (Week 1)
+Create repo, Next.js + TypeScript + Tailwind project, linting and formatting.
+Create Supabase projects (staging, production); enable PostGIS.
+Set up CI, environment variables, Sentry.
+Define design tokens (colours, type, spacing) from the UI/UX doc.
+Done when: a "hello world" PWA deploys to staging and installs on a phone.
+
+Phase 1: Accounts, Roles, Admin Approval (Week 2)
+Auth (email/password or phone OTP), profiles , roles.
+Hotel and NGO registration forms with map pin picker and document upload.
+Admin approval queue; approval emails.
+RLS policies for all tables created so far.
+Done when: a hotel and an NGO can register and be approved by an admin.
+
+Phase 2: Listings and Claiming (Week 3)
+Create listing form with defaults, templates, "repost last", safety checklist.
+NGO list view of nearby open listings (PostGIS radius query), filters.
+claim_listing function with atomic claim; claim and release flows.
+Auto-expiry job; volunteer invite and assignment.
+In-app notifications; web push setup.
+Done when: a hotel posts, an NGO is notified, claims, and assigns a volunteer.
+
+Phase 3: Map and Live Tracking (Weeks 4–5)
+Leaflet map with urgency-coloured pins, clustering, bottom sheet.
+Pickup states and trip screen; watchPosition with throttling; wake lock.
+
+location_pings writes and Realtime subscription on the hotel/NGO side.
+
+Routing API for route line and ETA; stale-location handling.
+Simulated-movement test script.
+Done when: a hotel can watch the volunteer's marker move on a real phone during a test
+trip.
+
+Phase 4: Collection, Report and Flags (Week 6)
+Geofence check on "Collected"; photo capture and upload (private bucket).
+Completion report: portions, tags, left-behind; reminder jobs.
+Auto-flags and admin flag queue with Keep / Correct / Void and audit log.
+Done when: a full pickup can be completed and an admin can void a report.
+
+Phase 5: Score, Leaderboard and Impact Passport (Week 7)
+Score calculation (SQL function or Edge Function), weekly snapshot job.
+Leaderboard views, tiers, categories, Most Improved, Streak.
+Hotel private dashboard; monthly PDF certificate; embeddable badge; QR card.
+Admin settings screen for weights and constants.
+Done when: seeded data produces a believable leaderboard, and certificates and badges
+render.
+
+Phase 6: News and Public Experience (Week 8)
+Public sign-up, news feed, internal stories, city counter.
+RSS ingestion to drafts and admin approval.
+Follow and kudos; hotel public pages; share previews.
+Done when: a public user can sign up, read news, follow a hotel and send kudos.
+
+Phase 7: Hardening and Pilot Launch (Weeks 9–10)
+Device testing on iOS Safari and Android Chrome; fix permission, camera, push, wake-lock
+issues.
+Security review: RLS audit, rate limits, signed URLs, input validation.
+Accessibility pass and performance check.
+Legal: terms of use, privacy policy, food-safety wording reviewed.
+Support email and complaint procedure ready.
+Onboard 3–5 hotels and 2–3 NGOs; training session for volunteers.
+Done when: the pilot is live with real pickups.
+
+3. Pilot (Weeks 10–14)
+Run for about 4 weeks; review metrics weekly (claim rate, time to claim, report completion,
+repeat posting).
+Collect feedback from hotels, NGO volunteers and a few public users.
+Tune score weights, benchmark constants, notification radius and reminder timing.
+
+Decide on next steps: wider launch, WhatsApp/SMS alerts, independent volunteers, native
+app.
+
+4. Milestones and Checkpoints
+Milestone
+
+Target
+
+Demo-able output
+
+M1: Accounts and approval End of week 2 Register and approve hotel + NGO
+M2: Core flow
+
+End of week 3 Post, notify, claim
+
+M3: Live map
+
+End of week 5 Moving marker on a phone
+
+M4: Report and moderation End of week 6 Complete pickup, admin void
+M5: Score and incentives
+
+End of week 7 Leaderboard, certificate, badge
+
+M6: Public features
+
+End of week 8 News, follow, kudos
+
+M7: Pilot launch
+
+Week 10
+
+Real pickups with partners
+
+5. Task Breakdown by Area
+Area
+
+Key tasks
+
+Front end
+
+Design system, layouts, forms, map, sheets, dashboards, public pages, PWA
+
+Back end
+
+Schema and migrations, RLS, functions, jobs, notifications, PDF generation
+
+Integrations Routing API, web push, email, RSS, OSM tiles
+QA
+
+Test plan, device matrix, seed data, simulated trips
+
+Ops
+
+CI/CD, backups, monitoring, secrets, environments
+
+Content
+
+Tag list, safety checklist wording, terms, onboarding copy, first news stories
+
+Partners
+
+Recruit pilot hotels and NGOs, onboarding sessions, feedback loop
+
+6. Team and Roles (suggested)
+1 full-stack developer (core), 1 front-end/UI developer (optional but helpful).
+1 product owner (you) for decisions, partner relationships, content.
+Part-time designer for wireframes and brand (or use the token set as is).
+
+Part-time legal review for terms and food-safety wording.
+
+7. Risks to Watch During the Build
+Risk
+
+Early signal
+
+Response
+
+Live tracking
+unreliable on iOS
+
+Test trips drop updates
+when screen locks
+
+Emphasise wake lock; status fallback; "last
+seen" label
+
+Hotels don't post
+after week 1
+
+Falling weekly post count
+
+Personal onboarding, reminders to kitchen
+staff, certificates and badges early
+
+NGO reports late
+or skipped
+
+Report-due flags rising
+
+Auto-reminders, show the report step right
+after collection, trust score
+
+Scope creep
+
+New requests mid-phase Park in a backlog; only revisit after pilot
+
+Score feels unfair
+
+Complaint emails
+
+Review constants, void/correct, adjust
+smoothing
+
+8. Post-MVP Backlog (not in scope now)
+WhatsApp/SMS alerts for NGOs.
+Independent volunteers and delivery routing across multiple pickups.
+Multi-language UI.
+Native apps.
+Connected kitchen scales or surplus forecasting.
+Corporate sponsorship and diner-points redemption at partner hotels.
+Multi-branch hotel chains.
+Dark mode.
+
+9. Immediate Next Steps (this week)
+1. Answer the open questions (listed with this document set) so the PRD and schema can be
+finalised.
+2. Decide the stack (confirm Next.js + Supabase) and who will build it.
+3. Choose a product name and register the domain.
+4. Shortlist 3–5 pilot hotels and 2–3 NGOs and start conversations.
+5. Draft the terms of use and food-safety checklist for legal review.
+6. Begin Phase 0.
+
+

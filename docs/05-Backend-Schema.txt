@@ -1,0 +1,609 @@
+Backend Schema Document
+Version: 0.1 (draft). Postgres + PostGIS (Supabase). Adjust names and types to taste.
+
+1. Entity Overview
+profiles ─┬─ hotels ──── listings ──── pickups ──┬─ location_pings
+├─ ngos ──────────────────────┘
+├─ pickup_tags ── tags
+├─ volunteers (belong to an ngo)
+└─ flags
+└─ public users ── follows / kudos
+hotels ── score_snapshots, certificates
+admin ── admin_actions, settings, news_items
+all ── notifications
+
+2. Enums and Extensions
+sql
+
+create extension if not exists postgis;
+create extension if not exists pgcrypto;
+create type user_role
+as enum ('hotel','ngo','volunteer','public','admin')
+create type org_status
+as enum ('pending','approved','rejected','suspended'
+create type venue_type
+as enum ('hotel','restaurant','banquet_hall','hostel
+create type food_diet
+as enum ('veg','non_veg','mixed');
+create type listing_status as enum ('posted','claimed','completed','expired','c
+create type pickup_status as enum ('claimed','on_the_way','collected','complet
+create type tag_kind
+as enum ('positive','issue');
+create type flag_status
+as enum ('open','kept','corrected','voided');
+create type news_status
+as enum ('draft','published','hidden');
+create type news_source
+as enum ('internal','external');
+
+3. Core Tables
+sql
+
+create table profiles (
+id
+uuid primary key references auth.users(id) on delete cascade,
+role
+user_role not null,
+full_name
+text not null,
+phone
+text,
+created_at timestamptz not null default now()
+);
+create table hotels (
+id
+uuid primary key default gen_random_uuid(),
+owner_id
+uuid not null references profiles(id),
+name
+text not null,
+slug
+text unique not null,
+venue_type
+venue_type not null,
+address
+text not null,
+location
+geography(Point,4326) not null,
+rooms
+int default 0,
+seats
+int default 0,
+banquet_capacity
+int default 0,
+events_per_month
+int default 0,
+operating_days_per_week int default 7 check (operating_days_per_week between
+status
+org_status not null default 'pending',
+public_listing
+boolean not null default true,
+verification_doc_path text,
+created_at
+timestamptz not null default now()
+);
+create table ngos (
+id
+uuid primary key default gen_random_uuid(),
+owner_id
+uuid not null references profiles(id),
+name
+text not null,
+registration_no
+text,
+address
+text not null,
+location
+geography(Point,4326) not null,
+capacity_portions
+int default 0,
+service_radius_km
+numeric default 10,
+trust_score
+numeric not null default 1.0,
+-- 0..1, lowered by ou
+status
+org_status not null default 'pending',
+verification_doc_path text,
+created_at
+timestamptz not null default now()
+);
+create table volunteers (
+id
+uuid primary key default gen_random_uuid(),
+
+profile_id uuid not null references profiles(id),
+ngo_id
+uuid not null references ngos(id),
+vehicle
+text,
+active
+boolean not null default true
+);
+create table listings (
+id
+uuid primary key default gen_random_uuid(),
+hotel_id
+uuid not null references hotels(id),
+title
+text not null,
+description
+text,
+diet
+food_diet not null,
+portions_listed int not null check (portions_listed > 0),
+cooked_at
+timestamptz not null,
+pickup_by
+timestamptz not null,
+packaging_notes text,
+safety_confirmed boolean not null default false,
+status
+listing_status not null default 'posted',
+created_at
+timestamptz not null default now(),
+check (pickup_by > cooked_at)
+);
+create index on listings (status, pickup_by);
+create index on listings (hotel_id, created_at desc);
+create table pickups (
+id
+uuid primary key default gen_random_uuid(),
+listing_id
+uuid not null references listings(id),
+ngo_id
+uuid not null references ngos(id),
+volunteer_id
+uuid references volunteers(id),
+status
+pickup_status not null default 'claimed',
+claimed_at
+timestamptz not null default now(),
+started_at
+timestamptz,
+collected_at
+timestamptz,
+completed_at
+timestamptz,
+collected_in_geofence boolean,
+portions_received
+int check (portions_received >= 0),
+left_behind_portions int check (left_behind_portions >= 0),
+photo_path
+text,
+cancel_reason
+text,
+voided
+boolean not null default false,
+created_at
+timestamptz not null default now()
+);
+-- Only one active pickup per listing at a time
+create unique index one_active_pickup_per_listing
+on pickups (listing_id) where status in ('claimed','on_the_way','collected');
+
+create index on pickups (ngo_id, created_at desc);
+create table location_pings (
+id
+bigserial primary key,
+pickup_id
+uuid not null references pickups(id) on delete cascade,
+location
+geography(Point,4326) not null,
+accuracy_m
+numeric,
+recorded_at
+timestamptz not null default now()
+);
+create index on location_pings (pickup_id, recorded_at desc);
+create table tags (
+code
+text primary key,
+-- e.g. 'ready_on_time','well_packaged','fr
+label text not null,
+kind tag_kind not null,
+active boolean not null default true
+);
+create table pickup_tags (
+pickup_id uuid references pickups(id) on delete cascade,
+tag_code text references tags(code),
+primary key (pickup_id, tag_code)
+);
+
+4. Moderation, Scoring and Incentives
+sql
+
+create table flags (
+id
+uuid primary key default gen_random_uuid(),
+pickup_id uuid not null references pickups(id),
+reason
+text not null,
+-- 'quantity_mismatch','missing_photo','outs
+source
+text not null default 'auto',
+-- 'auto' | 'admin' | 'email_comp
+status
+flag_status not null default 'open',
+created_at timestamptz not null default now(),
+resolved_at timestamptz
+);
+create table admin_actions (
+id
+uuid primary key default gen_random_uuid(),
+admin_id
+uuid not null references profiles(id),
+action
+text not null,
+-- 'approve_org','suspend_org','void_report'
+target_type text not null,
+target_id uuid,
+reason
+text,
+before_data jsonb,
+after_data jsonb,
+created_at timestamptz not null default now()
+);
+create table settings (
+key
+text primary key,
+-- e.g. 'score_weights','smoothing_k','min_p
+value
+jsonb not null,
+updated_at timestamptz not null default now()
+);
+create table score_snapshots (
+id
+uuid primary key default gen_random_uuid(),
+hotel_id
+uuid not null references hotels(id),
+period_start
+date not null,
+period_end
+date not null,
+completed_pickups int not null,
+portions_rescued int not null,
+rescue_rate
+numeric,
+participation
+numeric,
+listing_accuracy numeric,
+handoff_quality
+numeric,
+left_behind
+numeric,
+-- null if no data
+composite
+numeric,
+tier
+text,
+-- 'seed','sprout','canopy','forest'
+rank_in_category int,
+eligible
+boolean not null default false,
+
+created_at
+timestamptz not null default now(),
+unique (hotel_id, period_end)
+);
+create table certificates (
+id
+uuid primary key default gen_random_uuid(),
+hotel_id
+uuid not null references hotels(id),
+month
+date not null,
+pdf_path
+text not null,
+meals
+int not null,
+created_at timestamptz not null default now(),
+unique (hotel_id, month)
+);
+
+5. Public Engagement and News
+sql
+
+create table news_items (
+id
+uuid primary key default gen_random_uuid(),
+source_type news_source not null,
+title
+text not null,
+snippet
+text,
+-- short only; no full copied articles
+source_name text,
+url
+text,
+image_url
+text,
+status
+news_status not null default 'draft',
+pinned
+boolean not null default false,
+published_at timestamptz,
+created_by uuid references profiles(id),
+created_at
+timestamptz not null default now()
+);
+create table follows (
+user_id uuid references profiles(id) on delete cascade,
+hotel_id uuid references hotels(id) on delete cascade,
+created_at timestamptz not null default now(),
+primary key (user_id, hotel_id)
+);
+create table kudos (
+id
+uuid primary key default gen_random_uuid(),
+user_id
+uuid not null references profiles(id) on delete cascade,
+hotel_id uuid not null references hotels(id) on delete cascade,
+week_start date not null,
+created_at timestamptz not null default now(),
+unique (user_id, hotel_id, week_start)
+-- one kudos per hotel per week
+);
+create table notifications (
+id
+uuid primary key default gen_random_uuid(),
+user_id
+uuid not null references profiles(id) on delete cascade,
+type
+text not null,
+payload
+jsonb not null default '{}',
+read_at
+timestamptz,
+created_at timestamptz not null default now()
+);
+create index on notifications (user_id, created_at desc);
+create table push_subscriptions (
+id
+uuid primary key default gen_random_uuid(),
+user_id
+uuid not null references profiles(id) on delete cascade,
+
+endpoint
+text unique not null,
+keys
+jsonb not null,
+created_at timestamptz not null default now()
+);
+
+6. Key Functions
+Atomic claim
+sql
+
+create or replace function claim_listing(p_listing uuid, p_ngo uuid, p_voluntee
+returns uuid language plpgsql security definer as $$
+declare v_pickup uuid;
+begin
+update listings set status = 'claimed'
+where id = p_listing and status = 'posted' and pickup_by > now();
+if not found then
+raise exception 'ALREADY_CLAIMED_OR_EXPIRED';
+end if;
+insert into pickups (listing_id, ngo_id, volunteer_id)
+values (p_listing, p_ngo, p_volunteer) returning id into v_pickup;
+return v_pickup;
+end $$;
+
+Nearby listings for an NGO
+sql
+
+select l.*, h.name, st_distance(h.location, n.location)/1000 as km
+from listings l
+join hotels h on h.id = l.hotel_id
+join ngos n
+on n.id = $1
+where l.status = 'posted' and l.pickup_by > now()
+and st_dwithin(h.location, n.location, n.service_radius_km * 1000)
+order by l.pickup_by;
+
+Weekly score job (outline)
+1. For each approved hotel with public_listing or not (all get a private score), take
+pickups with status='completed' and voided=false in the last 60 days.
+2. Compute each signal (definitions in the PRD, Section 8).
+3. Apply smoothing, composite weights from settings , per-NGO cap on tag weight.
+
+4. Set eligible = completed_pickups >= min_pickups ; rank within venue_type
+category; assign tier.
+5. Insert into score_snapshots . Voiding or correcting a pickup re-runs this for that
+hotel.
+Auto-flag triggers (on report submit)
+portions_received differs from portions_listed by more than a configured
+
+percentage.
+photo_path missing, or collected_in_geofence = false .
+
+Report completed more than 4 hours after collection.
+NGO's recent reports are statistical outliers (low trust score).
+
+7. Row-Level Security Summary
+Table
+
+Hotel
+
+NGO / Volunteer
+
+Public user
+
+Admin
+
+profiles
+
+own
+
+own
+
+own
+
+all
+
+hotels
+
+own (full), others
+(public fields)
+
+public fields
+
+public fields for
+opted-in
+
+all
+
+ngos
+
+none
+
+own
+
+none
+
+all
+
+listings
+
+own
+
+open listings in radius;
+own claimed
+
+none
+
+all
+
+pickups
+
+those on own
+listings (readonly)
+
+own NGO's
+
+none
+
+all
+
+location_pings
+
+read for own
+active pickups
+
+write for own active
+pickup, read own
+NGO's
+
+none
+
+all
+
+flags / admin_actions
+/ settings
+
+none
+
+none
+
+none
+
+all
+
+score_snapshots
+
+own
+
+none
+
+public view (latest,
+eligible, opted-in
+only)
+
+all
+
+news_items
+
+published (read)
+
+published (read)
+
+published (read)
+
+all
+
+follows / kudos
+
+none
+
+none
+
+own
+
+all
+
+notifications
+
+own
+
+own
+
+own
+
+own
+
+Public leaderboard and hotel public pages are served through views exposing only
+safe columns.
+Photos live in a private bucket; access via signed URLs for the involved hotel, NGO
+and admin.
+
+8. Scheduled Jobs
+Job
+
+Frequency
+
+Expire unclaimed listings past pickup_by
+
+every minute
+
+Re-notify / expand radius for unclaimed listings
+
+every few minutes
+
+Release no-show claims
+
+every few minutes
+
+Report-due reminders and late flags
+
+every 15 minutes
+
+Score snapshots
+
+weekly
+
+Monthly certificates
+
+monthly
+
+Delete location pings older than 30 days
+
+daily
+
+RSS news fetch to drafts
+
+hourly
+
+9. Seed Data (for development)
+5 hotels (mixed venue types), 3 NGOs with volunteers, 1 admin, 3 public users.
+Tags: ready_on_time, well_packaged, fresh (positive); late, quantity_short,
+poor_packaging (issue).
+Settings defaults for weights, smoothing k, min pickups, geofence radius.
+A script that simulates a volunteer moving along a route to test live tracking.
+
+10. Open Schema Questions
+Independent volunteers (no NGO)? Would make volunteers.ngo_id nullable.
+Quantity unit: portions only, or also kg?
+Multi-branch hotel chains: one account with several locations?
+Keep full history of voided reports (recommended) or delete?
+
+
