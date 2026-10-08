@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Profile,
   Hotel,
@@ -32,15 +32,27 @@ import {
   SEED_CERTIFICATES,
   SEED_TAGS
 } from './seedData';
+import { supabase, isSupabaseConfigured } from '@/lib/supabase/client';
+import {
+  authService,
+  listingsService,
+  pickupsService,
+  masterDataService,
+} from '@/lib/services/api';
 
 interface FoodRescueContextType {
-  // Current session
+  // Session & Authentication
   currentUser: Profile;
   setCurrentUser: (user: Profile) => void;
   switchRole: (role: UserRole) => void;
   activeHotel: Hotel;
   activeNGO: NGO;
   activeVolunteer: Volunteer;
+  isAuthenticated: boolean;
+  isConfigured: boolean;
+  isLoadingAuth: boolean;
+  signOut: () => Promise<void>;
+  refreshData: () => Promise<void>;
 
   // Data collections
   profiles: Profile[];
@@ -59,15 +71,15 @@ interface FoodRescueContextType {
   follows: { userId: string; hotelId: string }[];
   kudos: { userId: string; hotelId: string; date: string }[];
 
-  // Actions
-  postListing: (listingData: Omit<Listing, 'id' | 'created_at' | 'status'>) => Listing;
-  cancelListing: (listingId: string) => boolean;
-  claimListing: (listingId: string, ngoId: string, volunteerId?: string) => { success: boolean; pickupId?: string; error?: string };
-  releaseClaim: (pickupId: string) => boolean;
-  assignVolunteer: (pickupId: string, volunteerId: string) => void;
-  startTrip: (pickupId: string) => void;
-  recordPickupHandoff: (pickupId: string, inGeofence: boolean) => void;
-  submitCompletionReport: (pickupId: string, data: { portionsReceived: number; leftBehind: number; photoUrl: string; tags: string[] }) => void;
+  // Core Actions
+  postListing: (listingData: Omit<Listing, 'id' | 'created_at' | 'status'>) => Promise<Listing>;
+  cancelListing: (listingId: string) => Promise<boolean>;
+  claimListing: (listingId: string, ngoId: string, volunteerId?: string) => Promise<{ success: boolean; pickupId?: string; error?: string }>;
+  releaseClaim: (pickupId: string) => Promise<boolean>;
+  assignVolunteer: (pickupId: string, volunteerId: string) => Promise<void>;
+  startTrip: (pickupId: string) => Promise<void>;
+  recordPickupHandoff: (pickupId: string, inGeofence: boolean) => Promise<void>;
+  submitCompletionReport: (pickupId: string, data: { portionsReceived: number; leftBehind: number; photoUrl: string; tags: string[] }) => Promise<void>;
   
   // Public actions
   toggleFollowHotel: (hotelId: string) => void;
@@ -92,10 +104,20 @@ interface FoodRescueContextType {
 
 const FoodRescueContext = createContext<FoodRescueContextType | undefined>(undefined);
 
-const STORAGE_KEY = 'foodrescue_state_v1';
+const STORAGE_KEY = 'foodrescue_state_v2';
 
 export function FoodRescueProvider({ children }: { children: React.ReactNode }) {
-  const [currentUser, setCurrentUser] = useState<Profile>(SEED_PROFILES[0]); // default Hotel
+  const isConfigured = useMemo(() => isSupabaseConfigured(), []);
+
+  // Auth & Session state
+  const [currentUser, setCurrentUser] = useState<Profile>(SEED_PROFILES[0]);
+  const [activeHotelOverride, setActiveHotelOverride] = useState<Hotel | null>(null);
+  const [activeNGOOverride, setActiveNGOOverride] = useState<NGO | null>(null);
+  const [activeVolunteerOverride, setActiveVolunteerOverride] = useState<Volunteer | null>(null);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [isLoadingAuth, setIsLoadingAuth] = useState<boolean>(true);
+
+  // Data collections
   const [profiles, setProfiles] = useState<Profile[]>(SEED_PROFILES);
   const [hotels, setHotels] = useState<Hotel[]>(SEED_HOTELS);
   const [ngos, setNgos] = useState<NGO[]>(SEED_NGOS);
@@ -125,44 +147,12 @@ export function FoodRescueProvider({ children }: { children: React.ReactNode }) 
   const [kudos, setKudos] = useState<{ userId: string; hotelId: string; date: string }[]>([]);
   const [isSimulatingTrip, setIsSimulatingTrip] = useState(true);
 
-  // Active role entities
-  const activeHotel = hotels.find((h) => h.owner_id === currentUser.id) || hotels[0];
-  const activeNGO = ngos.find((n) => n.owner_id === currentUser.id) || ngos[0];
-  const activeVolunteer = volunteers.find((v) => v.profile_id === currentUser.id) || volunteers[0];
+  // Determine active entities
+  const activeHotel = activeHotelOverride || hotels.find((h) => h.owner_id === currentUser.id) || hotels[0];
+  const activeNGO = activeNGOOverride || ngos.find((n) => n.owner_id === currentUser.id) || ngos[0];
+  const activeVolunteer = activeVolunteerOverride || volunteers.find((v) => v.profile_id === currentUser.id) || volunteers[0];
 
-  // Load from local storage if available
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed.listings) setListings(parsed.listings);
-        if (parsed.pickups) setPickups(parsed.pickups);
-        if (parsed.flags) setFlags(parsed.flags);
-        if (parsed.hotels) setHotels(parsed.hotels);
-        if (parsed.ngos) setNgos(parsed.ngos);
-        if (parsed.scores) setScores(parsed.scores);
-        if (parsed.follows) setFollows(parsed.follows);
-        if (parsed.kudos) setKudos(parsed.kudos);
-      }
-    } catch {
-      // fallback to initial seed
-    }
-  }, []);
-
-  // Save to local storage on key state changes
-  useEffect(() => {
-    try {
-      localStorage.setItem(
-        STORAGE_KEY,
-        JSON.stringify({ listings, pickups, flags, hotels, ngos, scores, follows, kudos })
-      );
-    } catch {
-      // ignore
-    }
-  }, [listings, pickups, flags, hotels, ngos, scores, follows, kudos]);
-
-  // Push helper for notifications
+  // Notification helper
   const addNotification = useCallback((notif: Omit<AppNotification, 'id' | 'created_at' | 'read'>) => {
     const newNotif: AppNotification = {
       ...notif,
@@ -173,7 +163,166 @@ export function FoodRescueProvider({ children }: { children: React.ReactNode }) 
     setNotifications((prev) => [newNotif, ...prev]);
   }, []);
 
-  // Role switcher helper
+  // Fetch all backend data from Supabase
+  const refreshData = useCallback(async () => {
+    if (!isConfigured) return;
+
+    try {
+      const [fetchedListings, fetchedPickups, fetchedHotels, fetchedNGOs, fetchedVols, fetchedScores, fetchedNews, fetchedFlags] = await Promise.all([
+        listingsService.fetchListings(),
+        pickupsService.fetchPickups(),
+        masterDataService.fetchHotels(),
+        masterDataService.fetchNGOs(),
+        masterDataService.fetchVolunteers(),
+        masterDataService.fetchScores(),
+        masterDataService.fetchNews(),
+        masterDataService.fetchFlags(),
+      ]);
+
+      if (fetchedListings.length > 0) setListings(fetchedListings);
+      if (fetchedPickups.length > 0) setPickups(fetchedPickups);
+      if (fetchedHotels.length > 0) setHotels(fetchedHotels);
+      if (fetchedNGOs.length > 0) setNgos(fetchedNGOs);
+      if (fetchedVols.length > 0) setVolunteers(fetchedVols);
+      if (fetchedScores.length > 0) setScores(fetchedScores);
+      if (fetchedNews.length > 0) setNews(fetchedNews);
+      if (fetchedFlags.length > 0) setFlags(fetchedFlags);
+    } catch (err) {
+      console.warn('Backend tables query fallback:', err);
+    }
+  }, [isConfigured]);
+
+  // Auth Session Initialization
+  useEffect(() => {
+    let isMounted = true;
+
+    async function initAuth() {
+      if (!isConfigured) {
+        setIsLoadingAuth(false);
+        return;
+      }
+
+      try {
+        const session = await authService.getCurrentSession();
+        if (session?.user && isMounted) {
+          setIsAuthenticated(true);
+          const userData = await authService.getCurrentUserProfile(session.user.id);
+          if (userData.profile && isMounted) {
+            setCurrentUser(userData.profile);
+            if (userData.hotel) setActiveHotelOverride(userData.hotel);
+            if (userData.ngo) setActiveNGOOverride(userData.ngo);
+            if (userData.volunteer) setActiveVolunteerOverride(userData.volunteer);
+          }
+        }
+      } catch (err) {
+        console.error('Session initialization error:', err);
+      } finally {
+        if (isMounted) setIsLoadingAuth(false);
+      }
+
+      // Supabase Auth listener
+      const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
+        if (!isMounted) return;
+        if (event === 'SIGNED_IN' && session?.user) {
+          setIsAuthenticated(true);
+          const userData = await authService.getCurrentUserProfile(session.user.id);
+          if (userData.profile) {
+            setCurrentUser(userData.profile);
+            if (userData.hotel) setActiveHotelOverride(userData.hotel);
+            if (userData.ngo) setActiveNGOOverride(userData.ngo);
+            if (userData.volunteer) setActiveVolunteerOverride(userData.volunteer);
+          }
+          await refreshData();
+        } else if (event === 'SIGNED_OUT') {
+          setIsAuthenticated(false);
+          setActiveHotelOverride(null);
+          setActiveNGOOverride(null);
+          setActiveVolunteerOverride(null);
+          setCurrentUser(SEED_PROFILES[0]);
+        }
+      });
+
+      return () => {
+        authListener.subscription.unsubscribe();
+      };
+    }
+
+    initAuth();
+    refreshData();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [isConfigured, refreshData]);
+
+  // Setup Supabase Realtime Channels for Live Cross-Client Sync
+  useEffect(() => {
+    if (!isConfigured) return;
+
+    const channel = supabase
+      .channel('foodrescue-realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'listings' },
+        () => {
+          listingsService.fetchListings().then((data) => {
+            if (data.length > 0) setListings(data);
+          });
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'pickups' },
+        () => {
+          pickupsService.fetchPickups().then((data) => {
+            if (data.length > 0) setPickups(data);
+          });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [isConfigured]);
+
+  // Local Storage fallback backup
+  useEffect(() => {
+    if (!isConfigured) {
+      try {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (parsed.listings) setListings(parsed.listings);
+          if (parsed.pickups) setPickups(parsed.pickups);
+          if (parsed.flags) setFlags(parsed.flags);
+          if (parsed.hotels) setHotels(parsed.hotels);
+          if (parsed.ngos) setNgos(parsed.ngos);
+          if (parsed.scores) setScores(parsed.scores);
+          if (parsed.follows) setFollows(parsed.follows);
+          if (parsed.kudos) setKudos(parsed.kudos);
+        }
+      } catch {
+        // ignore
+      }
+    }
+  }, [isConfigured]);
+
+  // Save to local storage when not using live backend
+  useEffect(() => {
+    if (!isConfigured) {
+      try {
+        localStorage.setItem(
+          STORAGE_KEY,
+          JSON.stringify({ listings, pickups, flags, hotels, ngos, scores, follows, kudos })
+        );
+      } catch {
+        // ignore
+      }
+    }
+  }, [isConfigured, listings, pickups, flags, hotels, ngos, scores, follows, kudos]);
+
+  // Role switcher helper (for testing & demo persona switching)
   const switchRole = useCallback((role: UserRole) => {
     const match = profiles.find((p) => p.role === role);
     if (match) {
@@ -187,7 +336,19 @@ export function FoodRescueProvider({ children }: { children: React.ReactNode }) 
     }
   }, [profiles, addNotification]);
 
-  // Real-time volunteer movement simulator
+  // Sign out helper
+  const signOut = useCallback(async () => {
+    if (isConfigured) {
+      await authService.signOut();
+    }
+    setIsAuthenticated(false);
+    setActiveHotelOverride(null);
+    setActiveNGOOverride(null);
+    setActiveVolunteerOverride(null);
+    setCurrentUser(SEED_PROFILES[3]); // default to public user on logout
+  }, [isConfigured]);
+
+  // Real-time volunteer movement simulator (for testing active trip GPS)
   useEffect(() => {
     if (!isSimulatingTrip) return;
     const interval = setInterval(() => {
@@ -196,20 +357,16 @@ export function FoodRescueProvider({ children }: { children: React.ReactNode }) 
         const updated = prev.map((pickup) => {
           if (pickup.status === 'on_the_way' && pickup.current_location) {
             changed = true;
-            // Target is hotel location (Grand Palace 12.9756, 77.6067)
             const targetLat = 12.9756;
             const targetLng = 77.6067;
             const curLat = pickup.current_location.lat;
             const curLng = pickup.current_location.lng;
 
-            // Step slightly closer to the destination
             const dLat = (targetLat - curLat) * 0.12;
             const dLng = (targetLng - curLng) * 0.12;
-
             const newLat = curLat + dLat;
             const newLng = curLng + dLng;
 
-            // Distance in km approx
             const distKm = Math.sqrt(Math.pow((targetLat - newLat) * 111, 2) + Math.pow((targetLng - newLng) * 111, 2));
             const newEta = Math.max(1, Math.round(distKm * 3.5));
 
@@ -234,7 +391,23 @@ export function FoodRescueProvider({ children }: { children: React.ReactNode }) 
   }, [isSimulatingTrip]);
 
   // Hotel post surplus action
-  const postListing = useCallback((listingData: Omit<Listing, 'id' | 'created_at' | 'status'>) => {
+  const postListing = useCallback(async (listingData: Omit<Listing, 'id' | 'created_at' | 'status'>): Promise<Listing> => {
+    if (isConfigured) {
+      try {
+        const created = await listingsService.createListing(listingData);
+        setListings((prev) => [created, ...prev]);
+        addNotification({
+          user_id: activeHotel.owner_id,
+          title: '🚨 Surplus Food Posted Live!',
+          message: `Your listing for ${listingData.portions_listed} portions of ${listingData.diet} food is live for verified NGOs.`,
+          type: 'listing',
+        });
+        return created;
+      } catch (err) {
+        console.warn('Backend create listing error, falling back locally:', err);
+      }
+    }
+
     const newId = 'listing-' + Date.now();
     const newListing: Listing = {
       ...listingData,
@@ -249,7 +422,6 @@ export function FoodRescueProvider({ children }: { children: React.ReactNode }) 
 
     setListings((prev) => [newListing, ...prev]);
 
-    // Notify nearby NGOs
     addNotification({
       user_id: 'user-ngo-1',
       title: '🚨 New Surplus Food Available Nearby!',
@@ -258,10 +430,14 @@ export function FoodRescueProvider({ children }: { children: React.ReactNode }) 
     });
 
     return newListing;
-  }, [activeHotel, addNotification]);
+  }, [isConfigured, activeHotel, addNotification]);
 
   // Cancel listing
-  const cancelListing = useCallback((listingId: string) => {
+  const cancelListing = useCallback(async (listingId: string): Promise<boolean> => {
+    if (isConfigured) {
+      await listingsService.cancelListing(listingId);
+    }
+
     let success = false;
     setListings((prev) =>
       prev.map((l) => {
@@ -273,11 +449,23 @@ export function FoodRescueProvider({ children }: { children: React.ReactNode }) 
       })
     );
     return success;
-  }, []);
+  }, [isConfigured]);
 
   // Atomic Claim procedure
-  const claimListing = useCallback((listingId: string, ngoId: string, volunteerId?: string) => {
-    let target = listings.find((l) => l.id === listingId);
+  const claimListing = useCallback(async (listingId: string, ngoId: string, volunteerId?: string) => {
+    if (isConfigured) {
+      try {
+        const res = await pickupsService.claimListing(listingId, ngoId, volunteerId);
+        if (res.success) {
+          await refreshData();
+          return res;
+        }
+      } catch (err) {
+        console.warn('Backend claim error, using client transaction:', err);
+      }
+    }
+
+    const target = listings.find((l) => l.id === listingId);
     if (!target) return { success: false, error: 'Listing not found' };
     if (target.status !== 'posted') {
       return { success: false, error: 'Another NGO just claimed this surplus a moment ago!' };
@@ -286,7 +474,6 @@ export function FoodRescueProvider({ children }: { children: React.ReactNode }) 
       return { success: false, error: 'This listing has expired' };
     }
 
-    // Atomic update
     setListings((prev) =>
       prev.map((l) => (l.id === listingId ? { ...l, status: 'claimed' } : l))
     );
@@ -312,27 +499,29 @@ export function FoodRescueProvider({ children }: { children: React.ReactNode }) 
 
     setPickups((prev) => [newPickup, ...prev]);
 
-    // Notify hotel
     addNotification({
-      user_id: target.hotel_id === 'hotel-1' ? 'user-hotel-1' : 'user-hotel-2',
+      user_id: target.hotel_id,
       title: '✅ Listing Claimed!',
       message: `${ngo.name} claimed "${target.title}". Assigned volunteer: ${vol.name}.`,
       type: 'claim',
     });
 
     return { success: true, pickupId };
-  }, [listings, ngos, volunteers, addNotification]);
+  }, [isConfigured, listings, ngos, volunteers, refreshData, addNotification]);
 
   // Release claim (re-opens listing)
-  const releaseClaim = useCallback((pickupId: string) => {
+  const releaseClaim = useCallback(async (pickupId: string): Promise<boolean> => {
     const pickup = pickups.find((p) => p.id === pickupId);
     if (!pickup) return false;
+
+    if (isConfigured) {
+      await pickupsService.releaseClaim(pickupId, pickup.listing_id);
+    }
 
     setPickups((prev) =>
       prev.map((p) => (p.id === pickupId ? { ...p, status: 'cancelled', cancel_reason: 'Released by NGO' } : p))
     );
 
-    // Reopen listing
     setListings((prev) =>
       prev.map((l) => (l.id === pickup.listing_id ? { ...l, status: 'posted' } : l))
     );
@@ -345,10 +534,10 @@ export function FoodRescueProvider({ children }: { children: React.ReactNode }) 
     });
 
     return true;
-  }, [pickups, addNotification]);
+  }, [isConfigured, pickups, addNotification]);
 
   // Assign Volunteer
-  const assignVolunteer = useCallback((pickupId: string, volunteerId: string) => {
+  const assignVolunteer = useCallback(async (pickupId: string, volunteerId: string) => {
     const vol = volunteers.find((v) => v.id === volunteerId);
     if (!vol) return;
 
@@ -374,7 +563,11 @@ export function FoodRescueProvider({ children }: { children: React.ReactNode }) 
   }, [volunteers, addNotification]);
 
   // Volunteer starts trip
-  const startTrip = useCallback((pickupId: string) => {
+  const startTrip = useCallback(async (pickupId: string) => {
+    if (isConfigured) {
+      await pickupsService.startTrip(pickupId);
+    }
+
     setPickups((prev) =>
       prev.map((p) =>
         p.id === pickupId
@@ -400,10 +593,14 @@ export function FoodRescueProvider({ children }: { children: React.ReactNode }) 
       message: 'Collector Arun Kumar has started their trip. Track live coordinates on your dashboard.',
       type: 'pickup',
     });
-  }, [addNotification]);
+  }, [isConfigured, addNotification]);
 
   // Record Pickup Handoff
-  const recordPickupHandoff = useCallback((pickupId: string, inGeofence: boolean) => {
+  const recordPickupHandoff = useCallback(async (pickupId: string, inGeofence: boolean) => {
+    if (isConfigured) {
+      await pickupsService.recordPickupHandoff(pickupId, inGeofence);
+    }
+
     setPickups((prev) =>
       prev.map((p) =>
         p.id === pickupId
@@ -423,10 +620,10 @@ export function FoodRescueProvider({ children }: { children: React.ReactNode }) 
       message: 'Food has been verified and collected from your kitchen. Tracking complete.',
       type: 'collected',
     });
-  }, [addNotification]);
+  }, [isConfigured, addNotification]);
 
   // Submit Completion Report
-  const submitCompletionReport = useCallback((
+  const submitCompletionReport = useCallback(async (
     pickupId: string,
     data: { portionsReceived: number; leftBehind: number; photoUrl: string; tags: string[] }
   ) => {
@@ -435,6 +632,10 @@ export function FoodRescueProvider({ children }: { children: React.ReactNode }) 
 
     const listing = listings.find((l) => l.id === pickup.listing_id);
     const listedPortions = listing ? listing.portions_listed : data.portionsReceived;
+
+    if (isConfigured) {
+      await pickupsService.submitCompletionReport(pickupId, pickup.listing_id, data);
+    }
 
     setPickups((prev) =>
       prev.map((p) =>
@@ -452,7 +653,6 @@ export function FoodRescueProvider({ children }: { children: React.ReactNode }) 
       )
     );
 
-    // Update listing to completed
     if (listing) {
       setListings((prev) =>
         prev.map((l) => (l.id === listing.id ? { ...l, status: 'completed' } : l))
@@ -460,7 +660,7 @@ export function FoodRescueProvider({ children }: { children: React.ReactNode }) 
     }
 
     // Auto-Flagging rules per Section 7.5 & 8
-    const isMismatch = Math.abs(listedPortions - data.portionsReceived) / listedPortions > 0.40;
+    const isMismatch = Math.abs(listedPortions - data.portionsReceived) / (listedPortions || 1) > 0.40;
     const isMissingPhoto = !data.photoUrl || data.photoUrl.trim() === '';
     const isOutGeofence = pickup.collected_in_geofence === false;
 
@@ -491,9 +691,8 @@ export function FoodRescueProvider({ children }: { children: React.ReactNode }) 
       });
     }
 
-    // Recompute score snapshot for the hotel
     recomputeScores();
-  }, [pickups, listings, addNotification]);
+  }, [isConfigured, pickups, listings, addNotification]);
 
   // Social: Follow Hotel
   const toggleFollowHotel = useCallback((hotelId: string) => {
@@ -509,7 +708,6 @@ export function FoodRescueProvider({ children }: { children: React.ReactNode }) 
 
   // Social: Send Kudos
   const sendKudos = useCallback((hotelId: string) => {
-    // Check if user already sent kudos to this hotel this week
     const now = new Date();
     const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
     const recent = kudos.find((k) => k.userId === currentUser.id && k.hotelId === hotelId && k.date > oneWeekAgo);
@@ -576,7 +774,6 @@ export function FoodRescueProvider({ children }: { children: React.ReactNode }) 
       );
     }
 
-    // Trigger score recalculation
     recomputeScores();
 
     addNotification({
@@ -613,7 +810,6 @@ export function FoodRescueProvider({ children }: { children: React.ReactNode }) 
   const recomputeScores = useCallback(() => {
     setScores((prev) => {
       return prev.map((s) => {
-        // Find completed pickups for this hotel that aren't voided
         const hotelPickups = pickups.filter(
           (p) => p.status === 'completed' && !p.voided && (p.listing?.hotel_id === s.hotel_id || s.hotel_id === 'hotel-1')
         );
@@ -621,7 +817,6 @@ export function FoodRescueProvider({ children }: { children: React.ReactNode }) 
         const totalPortions = hotelPickups.reduce((acc, p) => acc + (p.portions_received || 0), s.portions_rescued);
         const count = hotelPickups.length + s.completed_pickups;
 
-        // Composite calculation logic
         const rawScore = Math.min(99.5, s.composite + (hotelPickups.length > 0 ? 0.3 : 0));
         let tier: 'seed' | 'sprout' | 'canopy' | 'forest' = 'seed';
         if (rawScore >= 90) tier = 'forest';
@@ -663,6 +858,11 @@ export function FoodRescueProvider({ children }: { children: React.ReactNode }) 
         activeHotel,
         activeNGO,
         activeVolunteer,
+        isAuthenticated,
+        isConfigured,
+        isLoadingAuth,
+        signOut,
+        refreshData,
         profiles,
         hotels,
         ngos,

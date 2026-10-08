@@ -28,9 +28,9 @@ export default function HotelListingsPage() {
     return l.status === filterTab;
   });
 
-  const handleCancel = (id: string) => {
+  const handleCancel = async (id: string) => {
     if (confirm('Are you sure you want to cancel this surplus listing? This cannot be undone.')) {
-      cancelListing(id);
+      await cancelListing(id);
     }
   };
 

@@ -27,9 +27,9 @@ export default function NGOActivePickupsPage() {
   const activeOnes = ngoPickups.filter((p) => p.status !== 'completed' && p.status !== 'cancelled');
   const pastOnes = ngoPickups.filter((p) => p.status === 'completed');
 
-  const handleRelease = (pickupId: string) => {
+  const handleRelease = async (pickupId: string) => {
     if (confirm('Release this claim? The surplus food will immediately reopen for other nearby charity kitchens.')) {
-      releaseClaim(pickupId);
+      await releaseClaim(pickupId);
     }
   };
 

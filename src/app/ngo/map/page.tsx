@@ -53,10 +53,10 @@ export default function NGOMapDiscoveryPage() {
     setShowClaimModal(true);
   };
 
-  const handleConfirmClaim = () => {
+  const handleConfirmClaim = async () => {
     if (!selectedListing) return;
 
-    const result = claimListing(selectedListing.id, activeNGO.id, selectedVolunteerId);
+    const result = await claimListing(selectedListing.id, activeNGO.id, selectedVolunteerId);
 
     if (result.success) {
       setClaimSuccess(`Successfully claimed ${selectedListing.portions_listed} portions! Assigned to volunteer.`);

@@ -73,13 +73,13 @@ export default function VolunteerActiveTripPage() {
     );
   }
 
-  const handleStartTrip = () => {
-    startTrip(activePickup.id);
+  const handleStartTrip = async () => {
+    await startTrip(activePickup.id);
   };
 
-  const handleCollected = () => {
+  const handleCollected = async () => {
     // Record handoff with geofence verification
-    recordPickupHandoff(activePickup.id, inGeofence);
+    await recordPickupHandoff(activePickup.id, inGeofence);
     setShowReportModal(true);
   };
 
@@ -91,23 +91,26 @@ export default function VolunteerActiveTripPage() {
     }
   };
 
-  const handleSubmitReport = (e: React.FormEvent) => {
+  const handleSubmitReport = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmittingReport(true);
 
-    submitCompletionReport(activePickup.id, {
-      portionsReceived,
-      leftBehind,
-      photoUrl,
-      tags: selectedTags,
-    });
+    try {
+      await submitCompletionReport(activePickup.id, {
+        portionsReceived,
+        leftBehind,
+        photoUrl,
+        tags: selectedTags,
+      });
 
-    setTimeout(() => {
       setIsSubmittingReport(false);
       setShowReportModal(false);
       alert('Completion Report Verified & Submitted! Platform score updated.');
       router.push('/ngo/pickups');
-    }, 600);
+    } catch (err) {
+      setIsSubmittingReport(false);
+      console.error(err);
+    }
   };
 
   return (

@@ -67,7 +67,7 @@ export default function PostSurplusPage() {
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!safetyChecked) {
       alert('Please confirm that food safety guidelines have been followed.');
@@ -81,21 +81,24 @@ export default function PostSurplusPage() {
     const cookedIso = new Date(`${today}T${cookedAtTime}:00`).toISOString();
     const pickupIso = new Date(`${today}T${pickupByTime}:00`).toISOString();
 
-    const created = postListing({
-      hotel_id: activeHotel.id,
-      title,
-      diet,
-      portions_listed: portions,
-      cooked_at: cookedIso,
-      pickup_by: pickupIso,
-      packaging_notes: packagingNotes,
-      safety_confirmed: safetyChecked,
-    });
+    try {
+      const created = await postListing({
+        hotel_id: activeHotel.id,
+        title,
+        diet,
+        portions_listed: portions,
+        cooked_at: cookedIso,
+        pickup_by: pickupIso,
+        packaging_notes: packagingNotes,
+        safety_confirmed: safetyChecked,
+      });
 
-    setTimeout(() => {
       setIsSubmitting(false);
       router.push(`/hotel/listings/${created.id}`);
-    }, 400);
+    } catch (err) {
+      setIsSubmitting(false);
+      console.error(err);
+    }
   };
 
   return (

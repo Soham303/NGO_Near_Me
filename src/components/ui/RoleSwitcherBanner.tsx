@@ -1,12 +1,13 @@
 'use client';
 
 import React from 'react';
+import Link from 'next/link';
 import { useFoodRescue } from '@/lib/store';
 import { UserRole } from '@/types';
-import { Building2, HeartHandshake, Bike, Users, ShieldAlert, Sparkles } from 'lucide-react';
+import { Building2, HeartHandshake, Bike, Users, ShieldAlert, Sparkles, CheckCircle2, KeyRound } from 'lucide-react';
 
 export function RoleSwitcherBanner() {
-  const { currentUser, switchRole, isSimulatingTrip, toggleTripSimulation } = useFoodRescue();
+  const { currentUser, switchRole, isSimulatingTrip, toggleTripSimulation, isAuthenticated, isConfigured } = useFoodRescue();
 
   const roles: { role: UserRole; label: string; icon: React.ReactNode; desc: string }[] = [
     {
@@ -42,15 +43,34 @@ export function RoleSwitcherBanner() {
   ];
 
   return (
-    <aside aria-label="Demo Role Switcher" className="bg-neutral-text text-white text-xs px-4 py-2 border-b border-gray-700 select-none">
+    <aside aria-label="Role Switcher Banner" className="bg-neutral-text text-white text-xs px-4 py-2 border-b border-gray-700 select-none">
       <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <span className="flex items-center gap-1 font-bold text-emerald-400 bg-emerald-950 px-2 py-0.5 rounded-full border border-emerald-800">
-            <Sparkles className="w-3 h-3 text-emerald-400" />
-            <span>Interactive Demo Mode</span>
-          </span>
+          {isAuthenticated ? (
+            <span className="flex items-center gap-1 font-bold text-emerald-400 bg-emerald-950 px-2.5 py-0.5 rounded-full border border-emerald-800">
+              <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+              <span>Live Auth Active</span>
+            </span>
+          ) : isConfigured ? (
+            <Link
+              href="/auth"
+              className="flex items-center gap-1 font-bold text-emerald-400 bg-emerald-950 px-2 py-0.5 rounded-full border border-emerald-800 hover:bg-emerald-900 transition-colors"
+            >
+              <Sparkles className="w-3 h-3 text-emerald-400" />
+              <span>Sign In to Your Account</span>
+            </Link>
+          ) : (
+            <Link
+              href="/auth"
+              className="flex items-center gap-1 font-bold text-amber-400 bg-amber-950 px-2 py-0.5 rounded-full border border-amber-800 hover:bg-amber-900 transition-colors"
+            >
+              <KeyRound className="w-3 h-3 text-amber-400" />
+              <span>Supabase Awaiting Keys</span>
+            </Link>
+          )}
+
           <span className="text-gray-300 hidden sm:inline">
-            Active Persona: <strong className="text-white">{currentUser.full_name}</strong> ({currentUser.role.toUpperCase()})
+            Logged In As: <strong className="text-white">{currentUser.full_name}</strong> ({currentUser.role.toUpperCase()})
           </span>
         </div>
 
