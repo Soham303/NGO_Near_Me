@@ -171,17 +171,22 @@ export default function AuthPage() {
           } : undefined,
         });
 
-        if (res.profile) {
-          setCurrentUser(res.profile);
+        if (res.session) {
+          if (res.profile) {
+            setCurrentUser(res.profile);
+          }
+          await refreshData();
+          setSuccessMsg(`Registration successful! Welcome to the network.`);
+          setTimeout(() => {
+            if (activeTab === 'hotel') router.push('/hotel/post');
+            else if (activeTab === 'ngo') router.push('/ngo/map');
+            else if (activeTab === 'volunteer') router.push('/volunteer/active');
+            else router.push('/');
+          }, 1500);
+        } else {
+          setSuccessMsg(`Account created! If email confirmation is enabled in your Supabase project, check your inbox to confirm your email, or disable 'Confirm email' in Supabase Authentication settings.`);
+          setAuthMode('login');
         }
-        await refreshData();
-        setSuccessMsg(`Registration successful! Welcome to the network.`);
-        setTimeout(() => {
-          if (activeTab === 'hotel') router.push('/hotel/post');
-          else if (activeTab === 'ngo') router.push('/ngo/map');
-          else if (activeTab === 'volunteer') router.push('/volunteer/active');
-          else router.push('/');
-        }, 1500);
       } else {
         // Preview mode simulated registration
         switchRole(activeTab);

@@ -48,7 +48,7 @@ do $$ begin
   create type news_source as enum ('internal', 'external');
 exception when duplicate_object then null; end $$;
 
--- 3. Profiles (Linked to Supabase Auth auth.users)
+-- 3. Profiles
 create table if not exists profiles (
   id uuid primary key,
   role user_role not null default 'public',
@@ -59,11 +59,8 @@ create table if not exists profiles (
   created_at timestamptz not null default now()
 );
 
--- Foreign key constraint to auth.users if available
-do $$ begin
-  alter table profiles
-    add constraint profiles_id_fkey foreign key (id) references auth.users(id) on delete cascade;
-exception when others then null; end $$;
+-- Decouple foreign key constraint to avoid cascade errors during auth registration and seed scripts
+alter table if exists profiles drop constraint if exists profiles_id_fkey;
 
 -- 4. Location Helper Function & Triggers
 create or replace function update_entity_location()
@@ -385,20 +382,38 @@ $$;
 
 -- Automatic user profile creation on Supabase auth signup
 create or replace function public.handle_new_user()
-returns trigger language plpgsql security definer as $$
+returns trigger
+language plpgsql
+security definer
+set search_path = public, auth
+as $$
+declare
+  v_role public.user_role;
+  v_role_txt text;
 begin
+  v_role_txt := new.raw_user_meta_data->>'role';
+  if v_role_txt in ('hotel', 'ngo', 'volunteer', 'public', 'admin') then
+    v_role := v_role_txt::public.user_role;
+  else
+    v_role := 'public'::public.user_role;
+  end if;
+
   insert into public.profiles (id, email, full_name, phone, role)
   values (
     new.id,
     new.email,
     coalesce(new.raw_user_meta_data->>'full_name', split_part(new.email, '@', 1)),
     new.raw_user_meta_data->>'phone',
-    coalesce((new.raw_user_meta_data->>'role')::user_role, 'public'::user_role)
+    v_role
   )
   on conflict (id) do update set
     email = excluded.email,
     full_name = coalesce(excluded.full_name, profiles.full_name),
     role = coalesce(excluded.role, profiles.role);
+    
+  return new;
+exception when others then
+  -- Fail-safe so auth.users registration is never blocked
   return new;
 end;
 $$;
@@ -497,6 +512,12 @@ create policy "Allow insert kudos" on kudos for insert with check (true);
 create policy "Allow read notifications" on notifications for select using (true);
 create policy "Allow insert notifications" on notifications for insert with check (true);
 create policy "Allow update notifications" on notifications for update using (true);
+
+-- Permissions
+grant usage on schema public to postgres, anon, authenticated, service_role;
+grant all on all tables in schema public to postgres, anon, authenticated, service_role;
+grant all on all sequences in schema public to postgres, anon, authenticated, service_role;
+grant usage on type public.user_role to postgres, anon, authenticated, service_role;
 
 -- 19. Enable Supabase Realtime for Core Tables
 do $$ begin
