@@ -587,8 +587,8 @@ export function FoodRescueProvider({ children }: { children: React.ReactNode }) 
         const updated = prev.map((pickup) => {
           if (pickup.status === 'on_the_way' && pickup.current_location) {
             changed = true;
-            const targetLat = 12.9756;
-            const targetLng = 77.6067;
+            const targetLat = 18.5362;
+            const targetLng = 73.8940;
             const curLat = pickup.current_location.lat;
             const curLng = pickup.current_location.lng;
 
@@ -806,8 +806,8 @@ export function FoodRescueProvider({ children }: { children: React.ReactNode }) 
               status: 'on_the_way',
               started_at: new Date().toISOString(),
               current_location: {
-                lat: 12.9645,
-                lng: 77.6321,
+                lat: 18.5204,
+                lng: 73.8567,
                 accuracy_m: 8.5,
                 updated_at: new Date().toISOString(),
               },

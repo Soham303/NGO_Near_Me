@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useFoodRescue } from '@/lib/store';
 import { authService } from '@/lib/services/api';
+import { PUNE_LOCALITIES, findClosestPuneLocality, PUNE_CENTER } from '@/lib/puneLocations';
 import { UserRole, VenueType } from '@/types';
 import {
   Building2,
@@ -25,6 +26,17 @@ import {
   Sparkles,
   Loader2
 } from 'lucide-react';
+
+// Geocoding helper for authentic Pune localities
+function getPuneCoordinates(addr: string): { lat: number; lng: number } {
+  const match = findClosestPuneLocality(addr || '');
+  if (match) {
+    return { lat: match.lat, lng: match.lng };
+  }
+  const jitterLat = (Math.random() - 0.5) * 0.02;
+  const jitterLng = (Math.random() - 0.5) * 0.02;
+  return { lat: PUNE_CENTER[0] + jitterLat, lng: PUNE_CENTER[1] + jitterLng };
+}
 
 export default function AuthPage() {
   const router = useRouter();
@@ -155,7 +167,9 @@ export default function AuthPage() {
           hotelData: activeTab === 'hotel' ? {
             name: hotelName || 'My Hotel Partner',
             venueType,
-            address: address || 'MG Road, Bangalore',
+            address: address || 'Koregaon Park Road, Pune - 411001',
+            lat: getPuneCoordinates(address).lat,
+            lng: getPuneCoordinates(address).lng,
             rooms,
             seats,
             banquetCapacity: banquetCap,
@@ -165,7 +179,9 @@ export default function AuthPage() {
           ngoData: activeTab === 'ngo' ? {
             name: ngoName || 'My Community Kitchen',
             registrationNo: regNo,
-            address: address || 'Victoria Road, Bangalore',
+            address: address || 'Near Karve Statue, Kothrud, Pune - 411038',
+            lat: getPuneCoordinates(address).lat,
+            lng: getPuneCoordinates(address).lng,
             capacityPortions: capacity,
             serviceRadiusKm: radiusKm,
           } : undefined,
@@ -477,16 +493,19 @@ export default function AuthPage() {
 
                 <div>
                   <label className="block text-xs font-bold text-neutral-text mb-1">
-                    Physical Address (for GPS collections) *
+                    Actual Physical Address in Pune City (Street, Area & PIN) *
                   </label>
                   <input
                     type="text"
                     required
                     value={address}
                     onChange={(e) => setAddress(e.target.value)}
-                    placeholder="e.g. 24 MG Road, Ashok Nagar, Bengaluru"
-                    className="w-full px-3 py-2 text-sm rounded-lg border border-neutral-border bg-white outline-none"
+                    placeholder="e.g. Koregaon Park Road / FC Road, Shivaji Nagar, Pune - 411005"
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-neutral-border bg-white outline-none focus:border-primary"
                   />
+                  <p className="text-[11px] text-neutral-muted mt-1">
+                    📍 Specify your Pune locality (e.g. Koregaon Park, FC Road, Viman Nagar, Baner, Kothrud, Hinjewadi) so your kitchen is pinpointed accurately on the Pune map.
+                  </p>
                 </div>
 
                 <div className="grid grid-cols-3 gap-2">
@@ -571,16 +590,19 @@ export default function AuthPage() {
 
                 <div>
                   <label className="block text-xs font-bold text-neutral-text mb-1">
-                    Distribution Kitchen Address *
+                    Actual Distribution Kitchen Address in Pune City *
                   </label>
                   <input
                     type="text"
                     required
                     value={address}
                     onChange={(e) => setAddress(e.target.value)}
-                    placeholder="e.g. 12 Victoria Road, Austin Town, Bengaluru"
-                    className="w-full px-3 py-2 text-sm rounded-lg border border-neutral-border bg-white outline-none"
+                    placeholder="e.g. Near Karve Statue, Kothrud / Viman Nagar, Pune - 411038"
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-neutral-border bg-white outline-none focus:border-primary"
                   />
+                  <p className="text-[11px] text-neutral-muted mt-1">
+                    📍 Required for pinpointing your distribution center on the interactive Pune city map.
+                  </p>
                 </div>
               </div>
             )}

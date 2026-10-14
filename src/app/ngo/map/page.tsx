@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useFoodRescue } from '@/lib/store';
 import { LeafletMap } from '@/components/map/LeafletMap';
+import { HotelRankingsWidget } from '@/components/leaderboard/HotelRankingsWidget';
 import { CountdownPill } from '@/components/ui/CountdownPill';
 import { Listing, FoodDiet } from '@/types';
 import {
@@ -23,7 +24,7 @@ import {
 
 export default function NGOMapDiscoveryPage() {
   const router = useRouter();
-  const { listings, activeNGO, volunteers, claimListing, pickups } = useFoodRescue();
+  const { listings, activeNGO, volunteers, claimListing, pickups, hotels, ngos } = useFoodRescue();
 
   const [viewMode, setViewMode] = useState<'split' | 'map' | 'list'>('split');
   const [selectedListing, setSelectedListing] = useState<Listing | null>(null);
@@ -170,6 +171,8 @@ export default function NGOMapDiscoveryPage() {
           >
             <LeafletMap
               listings={filteredListings}
+              hotels={hotels}
+              ngos={ngos}
               selectedListingId={selectedListing?.id}
               onSelectListing={(listing) => setSelectedListing(listing)}
             />
