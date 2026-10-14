@@ -19,13 +19,14 @@ import {
 export default function NGOActivePickupsPage() {
   const { pickups, releaseClaim, activeNGO } = useFoodRescue();
 
-  // Active NGO pickups
+  // Active NGO pickups strictly for active NGO
   const ngoPickups = pickups.filter(
-    (p) => p.ngo_id === activeNGO.id || activeNGO.id === 'ngo-1'
+    (p) => p.ngo_id === activeNGO.id
   );
 
   const activeOnes = ngoPickups.filter((p) => p.status !== 'completed' && p.status !== 'cancelled');
   const pastOnes = ngoPickups.filter((p) => p.status === 'completed');
+  const totalReceivedPortions = pastOnes.reduce((sum, p) => sum + (p.portions_received || 0), 0);
 
   const handleRelease = async (pickupId: string) => {
     if (confirm('Release this claim? The surplus food will immediately reopen for other nearby charity kitchens.')) {

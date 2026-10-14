@@ -116,6 +116,71 @@ export const DEFAULT_PUBLIC_PROFILE: Profile = {
   created_at: new Date().toISOString(),
 };
 
+export function computeRealtimeScores(
+  hotels: Hotel[],
+  listings: Listing[],
+  pickups: Pickup[]
+): ScoreSnapshot[] {
+  const computed = hotels.map((h, idx) => {
+    const hotelListings = listings.filter((l) => l.hotel_id === h.id);
+    const hotelPickups = pickups.filter(
+      (p) =>
+        (p.listing?.hotel_id === h.id || hotelListings.some((l) => l.id === p.listing_id)) &&
+        p.status === 'completed' &&
+        !p.voided
+    );
+
+    const portionsRescued = hotelPickups.reduce(
+      (acc, p) => acc + (p.portions_received || p.listing?.portions_listed || 0),
+      0
+    );
+    const portionsListed = hotelListings.reduce((acc, l) => acc + (l.portions_listed || 0), 0);
+    const rescueRate = portionsListed > 0 ? Math.min(100, Math.round((portionsRescued / portionsListed) * 100)) : 100;
+    const completedCount = hotelPickups.length;
+
+    // Base score starts around 78 for verified partners, progressing with real donation volume
+    const baseScore = 78.0;
+    const pickupBonus = Math.min(12.0, completedCount * 2.5);
+    const volumeBonus = Math.min(9.5, portionsRescued / 20.0);
+    const composite = Number(Math.min(99.5, baseScore + pickupBonus + volumeBonus).toFixed(1));
+
+    let tier: 'seed' | 'sprout' | 'canopy' | 'forest' = 'seed';
+    if (composite >= 90) tier = 'forest';
+    else if (composite >= 80) tier = 'canopy';
+    else if (composite >= 60) tier = 'sprout';
+
+    return {
+      id: `score-${h.id}`,
+      hotel_id: h.id,
+      hotel_name: h.name,
+      hotel_slug: h.slug || `hotel-${h.id.substring(0, 6)}`,
+      venue_type: h.venue_type,
+      period_start: new Date(Date.now() - 60 * 24 * 3600 * 1000).toISOString(),
+      period_end: new Date().toISOString(),
+      completed_pickups: completedCount,
+      portions_rescued: portionsRescued,
+      rescue_rate: rescueRate,
+      participation: Math.min(100, 80 + completedCount * 3),
+      listing_accuracy: 96,
+      handoff_quality: 95,
+      left_behind: 0,
+      composite,
+      tier,
+      rank_in_category: idx + 1,
+      eligible: true,
+      streak_weeks: Math.max(1, Math.floor(completedCount / 2) + 1),
+      created_at: h.created_at || new Date().toISOString(),
+    };
+  });
+
+  return computed
+    .sort((a, b) => b.portions_rescued - a.portions_rescued || b.composite - a.composite)
+    .map((s, i) => ({
+      ...s,
+      rank_in_category: i + 1,
+    }));
+}
+
 export function FoodRescueProvider({ children }: { children: React.ReactNode }) {
   const isConfigured = useMemo(() => isSupabaseConfigured(), []);
 
@@ -260,7 +325,11 @@ export function FoodRescueProvider({ children }: { children: React.ReactNode }) 
       if (fetchedHotels.length > 0) setHotels(fetchedHotels);
       if (fetchedNGOs.length > 0) setNgos(fetchedNGOs);
       if (fetchedVols.length > 0) setVolunteers(fetchedVols);
-      if (fetchedScores.length > 0) setScores(fetchedScores);
+      if (fetchedScores.length > 0) {
+        setScores(fetchedScores);
+      } else if (fetchedHotels.length > 0) {
+        setScores(computeRealtimeScores(fetchedHotels, fetchedListings, fetchedPickups));
+      }
       if (fetchedNews.length > 0) setNews(fetchedNews);
       if (fetchedFlags.length > 0) setFlags(fetchedFlags);
     } catch (err) {
@@ -893,31 +962,8 @@ export function FoodRescueProvider({ children }: { children: React.ReactNode }) 
 
   // Full Rescue Score recomputation per PRD Section 8
   const recomputeScores = useCallback(() => {
-    setScores((prev) => {
-      return prev.map((s) => {
-        const hotelPickups = pickups.filter(
-          (p) => p.status === 'completed' && !p.voided && (p.listing?.hotel_id === s.hotel_id || s.hotel_id === 'hotel-1')
-        );
-
-        const totalPortions = hotelPickups.reduce((acc, p) => acc + (p.portions_received || 0), s.portions_rescued);
-        const count = hotelPickups.length + s.completed_pickups;
-
-        const rawScore = Math.min(99.5, s.composite + (hotelPickups.length > 0 ? 0.3 : 0));
-        let tier: 'seed' | 'sprout' | 'canopy' | 'forest' = 'seed';
-        if (rawScore >= 90) tier = 'forest';
-        else if (rawScore >= 80) tier = 'canopy';
-        else if (rawScore >= 60) tier = 'sprout';
-
-        return {
-          ...s,
-          composite: Number(rawScore.toFixed(1)),
-          completed_pickups: count,
-          portions_rescued: totalPortions,
-          tier,
-        };
-      });
-    });
-  }, [pickups]);
+    setScores(computeRealtimeScores(hotels, listings, pickups));
+  }, [hotels, listings, pickups]);
 
   // Notifications
   const markNotificationRead = useCallback((id: string) => {

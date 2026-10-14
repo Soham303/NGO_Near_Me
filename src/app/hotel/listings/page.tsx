@@ -20,8 +20,22 @@ export default function HotelListingsPage() {
   const { listings, pickups, cancelListing, activeHotel } = useFoodRescue();
   const [filterTab, setFilterTab] = useState<'all' | 'posted' | 'claimed' | 'completed'>('all');
 
-  // Filter listings for active hotel
-  const hotelListings = listings.filter((l) => l.hotel_id === activeHotel.id || activeHotel.id === 'hotel-1');
+  // Filter listings for active hotel strictly
+  const hotelListings = listings.filter((l) => l.hotel_id === activeHotel.id);
+
+  // Real-time metrics for this specific kitchen
+  const activeOpenCount = hotelListings.filter((l) => l.status === 'posted').length;
+  const inTransitCount = hotelListings.filter((l) => l.status === 'claimed').length;
+  const hotelCompleted = pickups.filter(
+    (p) =>
+      (p.listing?.hotel_id === activeHotel.id || hotelListings.some((l) => l.id === p.listing_id)) &&
+      p.status === 'completed' &&
+      !p.voided
+  );
+  const totalMealsDonated = hotelCompleted.reduce(
+    (sum, p) => sum + (p.portions_received || p.listing?.portions_listed || 0),
+    0
+  );
 
   const filtered = hotelListings.filter((l) => {
     if (filterTab === 'all') return true;
@@ -59,6 +73,22 @@ export default function HotelListingsPage() {
           <PlusCircle className="w-4 h-4" />
           <span>Post New Surplus</span>
         </Link>
+      </div>
+
+      {/* Real-time Statistics Summary */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
+        <div className="bg-white p-4 rounded-xl border border-neutral-border shadow-xs">
+          <p className="text-[11px] font-bold text-neutral-muted uppercase tracking-wider">Open Surplus Batches</p>
+          <p className="text-2xl font-black text-primary mt-1">{activeOpenCount}</p>
+        </div>
+        <div className="bg-white p-4 rounded-xl border border-neutral-border shadow-xs">
+          <p className="text-[11px] font-bold text-neutral-muted uppercase tracking-wider">Claimed / In-Transit</p>
+          <p className="text-2xl font-black text-amber-600 mt-1">{inTransitCount}</p>
+        </div>
+        <div className="bg-white p-4 rounded-xl border border-neutral-border shadow-xs">
+          <p className="text-[11px] font-bold text-neutral-muted uppercase tracking-wider">Total Portions Donated</p>
+          <p className="text-2xl font-black text-neutral-text mt-1">{totalMealsDonated}</p>
+        </div>
       </div>
 
       {/* Tabs */}

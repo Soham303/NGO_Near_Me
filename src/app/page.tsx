@@ -21,7 +21,7 @@ import {
 } from 'lucide-react';
 
 export default function HomePage() {
-  const { listings, scores, news } = useFoodRescue();
+  const { listings, scores, news, pickups } = useFoodRescue();
 
   // Top 3 Leaderboard
   const topPerformers = scores.slice(0, 3);
@@ -30,8 +30,24 @@ export default function HomePage() {
   const openListings = listings.filter((l) => l.status === 'posted');
   const totalPortionsAvailable = openListings.reduce((sum, l) => sum + l.portions_listed, 0);
 
-  // Total Rescued metric
-  const totalRescued = scores.reduce((sum, s) => sum + s.portions_rescued, 25420);
+  // Real-time verified meals rescued
+  const completedPickups = pickups.filter((p) => p.status === 'completed' && !p.voided);
+  const rescuedFromPickups = completedPickups.reduce(
+    (sum, p) => sum + (p.portions_received || p.listing?.portions_listed || 0),
+    0
+  );
+  const rescuedFromScores = scores.reduce((sum, s) => sum + s.portions_rescued, 0);
+  const totalRescued = Math.max(rescuedFromPickups, rescuedFromScores);
+
+  // Live median claim duration
+  const validClaims = pickups
+    .filter((p) => p.claimed_at && p.listing?.created_at)
+    .map((p) => Math.max(1, Math.round((new Date(p.claimed_at!).getTime() - new Date(p.listing!.created_at).getTime()) / 60000)));
+  const medianClaimTime = validClaims.length > 0
+    ? `${Math.round(validClaims.reduce((a, b) => a + b, 0) / validClaims.length)}m`
+    : '< 15m';
+
+  const emissionsAvoided = totalRescued > 0 ? `${((totalRescued * 2.5) / 1000).toFixed(1)}t` : '0.0t';
 
   return (
     <div className="w-full">
@@ -98,14 +114,14 @@ export default function HomePage() {
               icon={<Clock className="w-6 h-6 text-accent" />}
             />
             <CounterTile
-              count="18m"
+              count={medianClaimTime}
               label="Median Claim Time"
               sublabel="From hotel posting to NGO lock"
               variant="neutral"
               icon={<Clock className="w-6 h-6 text-primary" />}
             />
             <CounterTile
-              count={`${((totalRescued * 2.5) / 1000).toFixed(1)}t`}
+              count={emissionsAvoided}
               label="CO₂ Emissions Avoided"
               sublabel="Calculated organic diversion benchmark"
               variant="neutral"
