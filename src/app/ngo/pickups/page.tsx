@@ -4,6 +4,7 @@ import React from 'react';
 import Link from 'next/link';
 import { useFoodRescue } from '@/lib/store';
 import { StatusTimeline } from '@/components/ui/StatusTimeline';
+import { HotelRankingsWidget } from '@/components/leaderboard/HotelRankingsWidget';
 import {
   UtensilsCrossed,
   HeartHandshake,
@@ -205,6 +206,14 @@ export default function NGOActivePickupsPage() {
             </div>
           ))}
         </div>
+      </div>
+
+      {/* Hotel Donor Rankings for NGOs */}
+      <div className="mt-12">
+        <HotelRankingsWidget
+          title="Top Hotel & Banquet Donors in Pune"
+          subtitle="Explore leading food donors and their verified portions rescued to coordinate future surplus pickups."
+        />
       </div>
     </div>
   );

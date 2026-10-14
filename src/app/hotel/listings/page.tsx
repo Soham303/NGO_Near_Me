@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useFoodRescue } from '@/lib/store';
 import { CountdownPill } from '@/components/ui/CountdownPill';
 import { StatusTimeline } from '@/components/ui/StatusTimeline';
+import { HotelRankingsWidget } from '@/components/leaderboard/HotelRankingsWidget';
 import {
   UtensilsCrossed,
   PlusCircle,
@@ -222,6 +223,14 @@ export default function HotelListingsPage() {
             );
           })
         )}
+      </div>
+
+      {/* City-Wide Hotel Donation Rankings */}
+      <div className="mt-12">
+        <HotelRankingsWidget
+          title="Pune City Hotel Donation Leaderboard"
+          subtitle="Compare your kitchen's rescue metrics with other registered venues across Pune."
+        />
       </div>
     </div>
   );

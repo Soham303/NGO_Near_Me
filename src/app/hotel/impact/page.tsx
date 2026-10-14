@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useFoodRescue } from '@/lib/store';
 import { ScoreRing } from '@/components/ui/ScoreRing';
 import { TierBadge } from '@/components/ui/TierBadge';
+import { HotelRankingsWidget } from '@/components/leaderboard/HotelRankingsWidget';
 import { CounterTile } from '@/components/ui/CounterTile';
 import {
   Trophy,
@@ -336,6 +337,14 @@ export default function HotelImpactPage() {
           </div>
         </div>
       )}
+    
+      {/* Pune Hotel Rankings */}
+      <div className="mt-12">
+        <HotelRankingsWidget
+          title="Pune City Hotel Impact Standings"
+          subtitle="Real-time rankings showing how your venue compares to other hospitality kitchens in Pune."
+        />
+      </div>
     </div>
   );
 }

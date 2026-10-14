@@ -4,6 +4,7 @@ import React from 'react';
 import Link from 'next/link';
 import { useFoodRescue } from '@/lib/store';
 import { CounterTile } from '@/components/ui/CounterTile';
+import { HotelRankingsWidget } from '@/components/leaderboard/HotelRankingsWidget';
 import {
   ShieldCheck,
   Building2,
@@ -155,6 +156,12 @@ export default function AdminDashboardPage() {
           />
         </div>
       </div>
+
+      {/* Platform Registered Hotel Donation Standings */}
+      <HotelRankingsWidget
+        title="Registered Hotel Donation Rankings & ESG Telemetry"
+        subtitle="Platform-wide hospitality partner benchmarks computed from verified receipt handoffs."
+      />
 
       {/* Quick Navigation Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

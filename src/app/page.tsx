@@ -7,6 +7,7 @@ import { CounterTile } from '@/components/ui/CounterTile';
 import { TierBadge } from '@/components/ui/TierBadge';
 import { CountdownPill } from '@/components/ui/CountdownPill';
 import { FoodWastageAwarenessNews } from '@/components/news/FoodWastageAwarenessNews';
+import { HotelRankingsWidget } from '@/components/leaderboard/HotelRankingsWidget';
 import {
   UtensilsCrossed,
   ArrowRight,
@@ -206,69 +207,13 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Leaderboard Teaser Section */}
+      {/* Hotel Rankings & Leaderboard Section */}
       <section className="py-16 bg-white border-y border-neutral-border">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-8">
-            <div>
-              <span className="text-xs font-bold uppercase tracking-wider text-accent">
-                Public Transparency
-              </span>
-              <h2 className="text-2xl sm:text-3xl font-black text-neutral-text mt-1">
-                Top Food Rescue Champions
-              </h2>
-              <p className="text-xs text-neutral-muted mt-1">
-                Verified 60-day rolling Rescue Scores computed from NGO receipt receipts.
-              </p>
-            </div>
-            <Link
-              href="/leaderboard"
-              className="text-xs font-bold text-primary hover:text-primary-hover flex items-center gap-1"
-            >
-              <span>Full Leaderboard</span>
-              <ArrowRight className="w-4 h-4" />
-            </Link>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {topPerformers.map((item, idx) => (
-              <div
-                key={item.id}
-                className="bg-neutral-bg rounded-card border border-neutral-border p-6 shadow-soft flex flex-col justify-between relative overflow-hidden"
-              >
-                <div className="absolute top-3 right-3 text-4xl font-black text-gray-200 select-none">
-                  #{idx + 1}
-                </div>
-
-                <div>
-                  <div className="flex items-center gap-2 mb-2">
-                    <TierBadge tier={item.tier} size="sm" />
-                    <span className="text-xs text-neutral-muted uppercase tracking-wider">
-                      {item.venue_type}
-                    </span>
-                  </div>
-
-                  <h3 className="font-bold text-lg text-neutral-text">{item.hotel_name}</h3>
-                  <div className="mt-3 flex items-baseline gap-2">
-                    <span className="text-3xl font-black text-primary">{item.composite}</span>
-                    <span className="text-xs text-neutral-muted">Rescue Score</span>
-                  </div>
-                </div>
-
-                <div className="mt-6 pt-4 border-t border-neutral-border/60 flex items-center justify-between text-xs">
-                  <span className="text-neutral-muted">
-                    <strong className="text-neutral-text">{item.portions_rescued}</strong> meals rescued
-                  </span>
-                  <Link
-                    href={`/hotel/${item.hotel_slug}`}
-                    className="font-bold text-primary hover:underline"
-                  >
-                    View Impact &rarr;
-                  </Link>
-                </div>
-              </div>
-            ))}
-          </div>
+          <HotelRankingsWidget
+            title="Pune Registered Hotel Rankings & Donation Impact"
+            subtitle="Real-time standings of registered hospitality partners ranked by total food donated, rescue success rate, and active contributions in Pune."
+          />
         </div>
       </section>
 

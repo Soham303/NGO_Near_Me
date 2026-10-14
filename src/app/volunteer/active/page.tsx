@@ -7,6 +7,7 @@ import { useFoodRescue } from '@/lib/store';
 import { LeafletMap } from '@/components/map/LeafletMap';
 import { TagChip } from '@/components/ui/TagChip';
 import { StatusTimeline } from '@/components/ui/StatusTimeline';
+import { HotelRankingsWidget } from '@/components/leaderboard/HotelRankingsWidget';
 import {
   Bike,
   Navigation,
@@ -234,7 +235,7 @@ export default function VolunteerActiveTripPage() {
           <LeafletMap
             listings={activePickup.listing ? [activePickup.listing] : []}
             activePickup={activePickup}
-            center={[12.9756, 77.6067]}
+            center={[18.5204, 73.8567]}
             zoom={14}
           />
         </div>
@@ -398,6 +399,14 @@ export default function VolunteerActiveTripPage() {
           </div>
         </div>
       )}
+
+      {/* Hotel Donor Rankings for Volunteers */}
+      <div className="mt-12">
+        <HotelRankingsWidget
+          title="Pune City Hotel Donors & Surplus Standings"
+          subtitle="Explore the hospitality champions you are collecting meals from across Pune."
+        />
+      </div>
     </div>
   );
 }
