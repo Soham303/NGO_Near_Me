@@ -6,6 +6,7 @@ import { useFoodRescue } from '@/lib/store';
 import { CounterTile } from '@/components/ui/CounterTile';
 import { TierBadge } from '@/components/ui/TierBadge';
 import { CountdownPill } from '@/components/ui/CountdownPill';
+import { FoodWastageAwarenessNews } from '@/components/news/FoodWastageAwarenessNews';
 import {
   UtensilsCrossed,
   ArrowRight,
@@ -328,61 +329,8 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* News & Impact Stories */}
-      <section className="py-16 bg-neutral-bg border-t border-neutral-border">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-8">
-            <div>
-              <span className="text-xs font-bold uppercase tracking-wider text-primary">
-                Community Voices
-              </span>
-              <h2 className="text-2xl sm:text-3xl font-black text-neutral-text mt-1">
-                Latest News & Milestones
-              </h2>
-            </div>
-            <Link
-              href="/news"
-              className="text-xs font-bold text-primary hover:text-primary-hover flex items-center gap-1"
-            >
-              <span>View all stories</span>
-              <ArrowRight className="w-4 h-4" />
-            </Link>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {news.slice(0, 3).map((item) => (
-              <div
-                key={item.id}
-                className="bg-white rounded-card border border-neutral-border overflow-hidden shadow-card hover:shadow-floating transition-all flex flex-col"
-              >
-                {item.image_url && (
-                  <img
-                    src={item.image_url}
-                    alt={item.title}
-                    className="w-full h-44 object-cover"
-                  />
-                )}
-                <div className="p-5 flex-1 flex flex-col justify-between">
-                  <div>
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-muted">
-                      {item.source_name || 'FoodRescue News'}
-                    </span>
-                    <h3 className="font-bold text-neutral-text text-base mt-1 leading-snug">
-                      {item.title}
-                    </h3>
-                    <p className="text-xs text-neutral-muted mt-2 leading-relaxed line-clamp-3">
-                      {item.snippet}
-                    </p>
-                  </div>
-                  <div className="mt-4 pt-3 border-t border-neutral-border text-xs text-primary font-bold">
-                    <Link href="/news">Read story &rarr;</Link>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
+      {/* Real-time Food Wastage Awareness News Feed */}
+      <FoodWastageAwarenessNews />
 
       {/* Footer */}
       <footer className="bg-neutral-text text-white py-12 border-t border-gray-800">

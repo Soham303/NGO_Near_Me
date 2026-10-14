@@ -13,6 +13,7 @@ import {
   TrendingUp,
   Bookmark
 } from 'lucide-react';
+import { FoodWastageAwarenessNews } from '@/components/news/FoodWastageAwarenessNews';
 
 export default function NewsFeedPage() {
   const { news } = useFoodRescue();
@@ -126,6 +127,11 @@ export default function NewsFeedPage() {
             </div>
           </article>
         ))}
+      </div>
+
+      {/* Real-time Global & National Food Waste News */}
+      <div className="mt-14 pt-10 border-t border-neutral-border">
+        <FoodWastageAwarenessNews />
       </div>
     </div>
   );

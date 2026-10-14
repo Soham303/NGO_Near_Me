@@ -96,6 +96,9 @@ export default function AuthPage() {
         const res = await authService.signIn(email, password);
         if (res.profile) {
           setCurrentUser(res.profile);
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('foodrescue_active_user', JSON.stringify(res.profile));
+          }
         }
         await refreshData();
         setSuccessMsg(`Welcome back, ${res.profile?.full_name || 'User'}! Redirecting...`);
@@ -174,6 +177,9 @@ export default function AuthPage() {
         if (res.session) {
           if (res.profile) {
             setCurrentUser(res.profile);
+            if (typeof window !== 'undefined') {
+              localStorage.setItem('foodrescue_active_user', JSON.stringify(res.profile));
+            }
           }
           await refreshData();
           setSuccessMsg(`Registration successful! Welcome to the network.`);

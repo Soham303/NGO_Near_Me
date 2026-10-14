@@ -184,11 +184,51 @@ export function computeRealtimeScores(
 export function FoodRescueProvider({ children }: { children: React.ReactNode }) {
   const isConfigured = useMemo(() => isSupabaseConfigured(), []);
 
-  // Auth & Session state - default to neutral public guest
-  const [currentUser, setCurrentUser] = useState<Profile>(DEFAULT_PUBLIC_PROFILE);
-  const [activeHotelOverride, setActiveHotelOverride] = useState<Hotel | null>(null);
-  const [activeNGOOverride, setActiveNGOOverride] = useState<NGO | null>(null);
-  const [activeVolunteerOverride, setActiveVolunteerOverride] = useState<Volunteer | null>(null);
+  // Auth & Session state - restore cached user synchronously to prevent profile switching glitches
+  const [currentUser, setCurrentUser] = useState<Profile>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('foodrescue_active_user');
+        if (cached) return JSON.parse(cached);
+      } catch {
+        // fallback
+      }
+    }
+    return DEFAULT_PUBLIC_PROFILE;
+  });
+  const [activeHotelOverride, setActiveHotelOverride] = useState<Hotel | null>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('foodrescue_active_hotel');
+        if (cached) return JSON.parse(cached);
+      } catch {
+        // fallback
+      }
+    }
+    return null;
+  });
+  const [activeNGOOverride, setActiveNGOOverride] = useState<NGO | null>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('foodrescue_active_ngo');
+        if (cached) return JSON.parse(cached);
+      } catch {
+        // fallback
+      }
+    }
+    return null;
+  });
+  const [activeVolunteerOverride, setActiveVolunteerOverride] = useState<Volunteer | null>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('foodrescue_active_volunteer');
+        if (cached) return JSON.parse(cached);
+      } catch {
+        // fallback
+      }
+    }
+    return null;
+  });
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [isLoadingAuth, setIsLoadingAuth] = useState<boolean>(true);
 
@@ -354,9 +394,21 @@ export function FoodRescueProvider({ children }: { children: React.ReactNode }) 
           const userData = await authService.getCurrentUserProfile(session.user.id);
           if (userData.profile && isMounted) {
             setCurrentUser(userData.profile);
-            if (userData.hotel) setActiveHotelOverride(userData.hotel);
-            if (userData.ngo) setActiveNGOOverride(userData.ngo);
-            if (userData.volunteer) setActiveVolunteerOverride(userData.volunteer);
+            if (typeof window !== 'undefined') {
+              localStorage.setItem('foodrescue_active_user', JSON.stringify(userData.profile));
+            }
+            if (userData.hotel) {
+              setActiveHotelOverride(userData.hotel);
+              if (typeof window !== 'undefined') localStorage.setItem('foodrescue_active_hotel', JSON.stringify(userData.hotel));
+            }
+            if (userData.ngo) {
+              setActiveNGOOverride(userData.ngo);
+              if (typeof window !== 'undefined') localStorage.setItem('foodrescue_active_ngo', JSON.stringify(userData.ngo));
+            }
+            if (userData.volunteer) {
+              setActiveVolunteerOverride(userData.volunteer);
+              if (typeof window !== 'undefined') localStorage.setItem('foodrescue_active_volunteer', JSON.stringify(userData.volunteer));
+            }
           }
         }
       } catch (err) {
@@ -373,9 +425,21 @@ export function FoodRescueProvider({ children }: { children: React.ReactNode }) 
           const userData = await authService.getCurrentUserProfile(session.user.id);
           if (userData.profile) {
             setCurrentUser(userData.profile);
-            if (userData.hotel) setActiveHotelOverride(userData.hotel);
-            if (userData.ngo) setActiveNGOOverride(userData.ngo);
-            if (userData.volunteer) setActiveVolunteerOverride(userData.volunteer);
+            if (typeof window !== 'undefined') {
+              localStorage.setItem('foodrescue_active_user', JSON.stringify(userData.profile));
+            }
+            if (userData.hotel) {
+              setActiveHotelOverride(userData.hotel);
+              if (typeof window !== 'undefined') localStorage.setItem('foodrescue_active_hotel', JSON.stringify(userData.hotel));
+            }
+            if (userData.ngo) {
+              setActiveNGOOverride(userData.ngo);
+              if (typeof window !== 'undefined') localStorage.setItem('foodrescue_active_ngo', JSON.stringify(userData.ngo));
+            }
+            if (userData.volunteer) {
+              setActiveVolunteerOverride(userData.volunteer);
+              if (typeof window !== 'undefined') localStorage.setItem('foodrescue_active_volunteer', JSON.stringify(userData.volunteer));
+            }
           }
           await refreshData();
         } else if (event === 'SIGNED_OUT') {
@@ -383,6 +447,12 @@ export function FoodRescueProvider({ children }: { children: React.ReactNode }) 
           setActiveHotelOverride(null);
           setActiveNGOOverride(null);
           setActiveVolunteerOverride(null);
+          if (typeof window !== 'undefined') {
+            localStorage.removeItem('foodrescue_active_user');
+            localStorage.removeItem('foodrescue_active_hotel');
+            localStorage.removeItem('foodrescue_active_ngo');
+            localStorage.removeItem('foodrescue_active_volunteer');
+          }
           setCurrentUser(DEFAULT_PUBLIC_PROFILE);
         }
       });
@@ -494,6 +564,12 @@ export function FoodRescueProvider({ children }: { children: React.ReactNode }) 
   const signOut = useCallback(async () => {
     if (isConfigured) {
       await authService.signOut();
+    }
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('foodrescue_active_user');
+      localStorage.removeItem('foodrescue_active_hotel');
+      localStorage.removeItem('foodrescue_active_ngo');
+      localStorage.removeItem('foodrescue_active_volunteer');
     }
     setIsAuthenticated(false);
     setActiveHotelOverride(null);
