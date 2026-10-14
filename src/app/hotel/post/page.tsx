@@ -12,8 +12,10 @@ import {
   RotateCcw,
   Check,
   BookmarkCheck,
-  Info
+  Info,
+  MapPin
 } from 'lucide-react';
+import { PUNE_LOCALITIES } from '@/lib/puneLocations';
 
 export default function PostSurplusPage() {
   const router = useRouter();
@@ -30,6 +32,8 @@ export default function PostSurplusPage() {
   const [cookedAtTime, setCookedAtTime] = useState(defaultCooked);
   const [pickupByTime, setPickupByTime] = useState(defaultPickup);
   const [packagingNotes, setPackagingNotes] = useState('Packed in clean food-grade stainless carriers. Dock B.');
+  const [selectedLocality, setSelectedLocality] = useState<string>(PUNE_LOCALITIES[0].name);
+  const [pickupAddress, setPickupAddress] = useState(activeHotel.address || 'Conrad Pune, 7 Mangaldas Road, Sangamvadi');
   const [safetyChecked, setSafetyChecked] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -81,6 +85,11 @@ export default function PostSurplusPage() {
     const cookedIso = new Date(`${today}T${cookedAtTime}:00`).toISOString();
     const pickupIso = new Date(`${today}T${pickupByTime}:00`).toISOString();
 
+    const loc = PUNE_LOCALITIES.find((l) => l.name === selectedLocality) || PUNE_LOCALITIES[0];
+    const fullAddress = pickupAddress
+      ? `${pickupAddress}, ${loc.name}, Pune ${loc.pincode}`
+      : `${activeHotel.name}, ${loc.name}, Pune ${loc.pincode}`;
+
     try {
       const created = await postListing({
         hotel_id: activeHotel.id,
@@ -91,7 +100,10 @@ export default function PostSurplusPage() {
         pickup_by: pickupIso,
         packaging_notes: packagingNotes,
         safety_confirmed: safetyChecked,
-      });
+        hotel_address: fullAddress,
+        lat: loc.lat,
+        lng: loc.lng,
+      } as any);
 
       setIsSubmitting(false);
       router.push(`/hotel/listings/${created.id}`);
@@ -284,6 +296,66 @@ export default function PostSurplusPage() {
                 Auto-expires if unclaimed by this time.
               </span>
             </div>
+          </div>
+
+          {/* Pune City Pickup Location & Map Pinpointing */}
+          <div className="p-4 bg-neutral-bg rounded-lg border border-neutral-border space-y-3">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-neutral-text uppercase tracking-wider flex items-center gap-1.5">
+                <MapPin className="w-4 h-4 text-primary" />
+                <span>Pune City Pickup Address (Map Pinpoint) *</span>
+              </label>
+              <span className="text-[11px] font-bold text-primary">Pune City Only</span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[11px] font-bold text-neutral-text mb-1">
+                  Pune Locality / Neighborhood *
+                </label>
+                <select
+                  value={selectedLocality}
+                  onChange={(e) => setSelectedLocality(e.target.value)}
+                  className="w-full px-3 py-2 text-xs font-semibold rounded border border-neutral-border bg-white outline-none focus:border-primary"
+                >
+                  {PUNE_LOCALITIES.map((loc) => (
+                    <option key={loc.name} value={loc.name}>
+                      {loc.name} (PIN: {loc.pincode} - {loc.landmark})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-neutral-text mb-1">
+                  Exact Kitchen / Gate Address *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={pickupAddress}
+                  onChange={(e) => setPickupAddress(e.target.value)}
+                  placeholder="e.g. 7 Mangaldas Road, Dock B / Kitchen Rear Ramp"
+                  className="w-full px-3 py-2 text-xs rounded border border-neutral-border bg-white outline-none focus:border-primary"
+                />
+              </div>
+            </div>
+
+            {/* Live GPS Coordinates Preview */}
+            {(() => {
+              const currentLoc = PUNE_LOCALITIES.find((l) => l.name === selectedLocality) || PUNE_LOCALITIES[0];
+              return (
+                <div className="flex items-center justify-between text-[11px] text-neutral-muted bg-white p-2 rounded border border-neutral-border">
+                  <span className="flex items-center gap-1">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                    <span>Map Coordinates: <strong>{currentLoc.lat}, {currentLoc.lng}</strong></span>
+                  </span>
+                  <span className="font-medium text-emerald-800">
+                    📍 Pinpointed to {currentLoc.name}, Pune
+                  </span>
+                </div>
+              );
+            })()}
           </div>
 
           {/* Packaging Notes */}
