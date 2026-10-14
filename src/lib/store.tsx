@@ -106,14 +106,129 @@ const FoodRescueContext = createContext<FoodRescueContextType | undefined>(undef
 
 const STORAGE_KEY = 'foodrescue_state_v2';
 
+export const DEFAULT_PUBLIC_PROFILE: Profile = {
+  id: 'guest-public',
+  role: 'public',
+  full_name: 'Public Supporter',
+  email: 'guest@foodrescue.org',
+  phone: '',
+  avatar_url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+  created_at: new Date().toISOString(),
+};
+
+export function computeRealtimeScores(
+  hotels: Hotel[],
+  listings: Listing[],
+  pickups: Pickup[]
+): ScoreSnapshot[] {
+  const computed = hotels.map((h, idx) => {
+    const hotelListings = listings.filter((l) => l.hotel_id === h.id);
+    const hotelPickups = pickups.filter(
+      (p) =>
+        (p.listing?.hotel_id === h.id || hotelListings.some((l) => l.id === p.listing_id)) &&
+        p.status === 'completed' &&
+        !p.voided
+    );
+
+    const portionsRescued = hotelPickups.reduce(
+      (acc, p) => acc + (p.portions_received || p.listing?.portions_listed || 0),
+      0
+    );
+    const portionsListed = hotelListings.reduce((acc, l) => acc + (l.portions_listed || 0), 0);
+    const rescueRate = portionsListed > 0 ? Math.min(100, Math.round((portionsRescued / portionsListed) * 100)) : 100;
+    const completedCount = hotelPickups.length;
+
+    // Base score starts around 78 for verified partners, progressing with real donation volume
+    const baseScore = 78.0;
+    const pickupBonus = Math.min(12.0, completedCount * 2.5);
+    const volumeBonus = Math.min(9.5, portionsRescued / 20.0);
+    const composite = Number(Math.min(99.5, baseScore + pickupBonus + volumeBonus).toFixed(1));
+
+    let tier: 'seed' | 'sprout' | 'canopy' | 'forest' = 'seed';
+    if (composite >= 90) tier = 'forest';
+    else if (composite >= 80) tier = 'canopy';
+    else if (composite >= 60) tier = 'sprout';
+
+    return {
+      id: `score-${h.id}`,
+      hotel_id: h.id,
+      hotel_name: h.name,
+      hotel_slug: h.slug || `hotel-${h.id.substring(0, 6)}`,
+      venue_type: h.venue_type,
+      period_start: new Date(Date.now() - 60 * 24 * 3600 * 1000).toISOString(),
+      period_end: new Date().toISOString(),
+      completed_pickups: completedCount,
+      portions_rescued: portionsRescued,
+      rescue_rate: rescueRate,
+      participation: Math.min(100, 80 + completedCount * 3),
+      listing_accuracy: 96,
+      handoff_quality: 95,
+      left_behind: 0,
+      composite,
+      tier,
+      rank_in_category: idx + 1,
+      eligible: true,
+      streak_weeks: Math.max(1, Math.floor(completedCount / 2) + 1),
+      created_at: h.created_at || new Date().toISOString(),
+    };
+  });
+
+  return computed
+    .sort((a, b) => b.portions_rescued - a.portions_rescued || b.composite - a.composite)
+    .map((s, i) => ({
+      ...s,
+      rank_in_category: i + 1,
+    }));
+}
+
 export function FoodRescueProvider({ children }: { children: React.ReactNode }) {
   const isConfigured = useMemo(() => isSupabaseConfigured(), []);
 
-  // Auth & Session state
-  const [currentUser, setCurrentUser] = useState<Profile>(SEED_PROFILES[0]);
-  const [activeHotelOverride, setActiveHotelOverride] = useState<Hotel | null>(null);
-  const [activeNGOOverride, setActiveNGOOverride] = useState<NGO | null>(null);
-  const [activeVolunteerOverride, setActiveVolunteerOverride] = useState<Volunteer | null>(null);
+  // Auth & Session state - restore cached user synchronously to prevent profile switching glitches
+  const [currentUser, setCurrentUser] = useState<Profile>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('foodrescue_active_user');
+        if (cached) return JSON.parse(cached);
+      } catch {
+        // fallback
+      }
+    }
+    return DEFAULT_PUBLIC_PROFILE;
+  });
+  const [activeHotelOverride, setActiveHotelOverride] = useState<Hotel | null>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('foodrescue_active_hotel');
+        if (cached) return JSON.parse(cached);
+      } catch {
+        // fallback
+      }
+    }
+    return null;
+  });
+  const [activeNGOOverride, setActiveNGOOverride] = useState<NGO | null>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('foodrescue_active_ngo');
+        if (cached) return JSON.parse(cached);
+      } catch {
+        // fallback
+      }
+    }
+    return null;
+  });
+  const [activeVolunteerOverride, setActiveVolunteerOverride] = useState<Volunteer | null>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('foodrescue_active_volunteer');
+        if (cached) return JSON.parse(cached);
+      } catch {
+        // fallback
+      }
+    }
+    return null;
+  });
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [isLoadingAuth, setIsLoadingAuth] = useState<boolean>(true);
 
@@ -147,10 +262,74 @@ export function FoodRescueProvider({ children }: { children: React.ReactNode }) 
   const [kudos, setKudos] = useState<{ userId: string; hotelId: string; date: string }[]>([]);
   const [isSimulatingTrip, setIsSimulatingTrip] = useState(true);
 
-  // Determine active entities
-  const activeHotel = activeHotelOverride || hotels.find((h) => h.owner_id === currentUser.id) || hotels[0];
-  const activeNGO = activeNGOOverride || ngos.find((n) => n.owner_id === currentUser.id) || ngos[0];
-  const activeVolunteer = activeVolunteerOverride || volunteers.find((v) => v.profile_id === currentUser.id) || volunteers[0];
+  // Determine active entities cleanly without leaking other profiles
+  const activeHotel = useMemo(() => {
+    if (activeHotelOverride) return activeHotelOverride;
+    const owned = hotels.find((h) => h.owner_id === currentUser.id);
+    if (owned) return owned;
+    if (currentUser.role === 'hotel') {
+      return {
+        id: 'hotel-' + currentUser.id,
+        owner_id: currentUser.id,
+        name: currentUser.full_name ? `${currentUser.full_name}'s Kitchen` : 'Registered Kitchen Partner',
+        slug: 'hotel-' + currentUser.id.substring(0, 6),
+        venue_type: 'hotel' as const,
+        address: 'Pune, Maharashtra',
+        lat: 18.5204,
+        lng: 73.8567,
+        rooms: 50,
+        seats: 100,
+        banquet_capacity: 300,
+        events_per_month: 4,
+        operating_days_per_week: 7,
+        status: 'approved' as const,
+        public_listing: true,
+        created_at: new Date().toISOString(),
+      };
+    }
+    return hotels[0] || SEED_HOTELS[0];
+  }, [activeHotelOverride, hotels, currentUser]);
+
+  const activeNGO = useMemo(() => {
+    if (activeNGOOverride) return activeNGOOverride;
+    const owned = ngos.find((n) => n.owner_id === currentUser.id);
+    if (owned) return owned;
+    if (currentUser.role === 'ngo') {
+      return {
+        id: 'ngo-' + currentUser.id,
+        owner_id: currentUser.id,
+        name: currentUser.full_name ? `${currentUser.full_name}'s NGO` : 'Community Food Bank Pune',
+        registration_no: 'NGO-PUN-' + currentUser.id.substring(0, 4).toUpperCase(),
+        address: 'Pune, Maharashtra',
+        lat: 18.5204,
+        lng: 73.8567,
+        capacity_portions: 400,
+        service_radius_km: 15,
+        trust_score: 1.0,
+        status: 'approved' as const,
+        created_at: new Date().toISOString(),
+      };
+    }
+    return ngos[0] || SEED_NGOS[0];
+  }, [activeNGOOverride, ngos, currentUser]);
+
+  const activeVolunteer = useMemo(() => {
+    if (activeVolunteerOverride) return activeVolunteerOverride;
+    const owned = volunteers.find((v) => v.profile_id === currentUser.id);
+    if (owned) return owned;
+    if (currentUser.role === 'volunteer') {
+      return {
+        id: 'vol-' + currentUser.id,
+        profile_id: currentUser.id,
+        ngo_id: activeNGO.id || 'ngo-1',
+        name: currentUser.full_name,
+        phone: currentUser.phone || '',
+        vehicle: 'Two-wheeler with Thermal Box',
+        active: true,
+      };
+    }
+    return volunteers[0] || SEED_VOLUNTEERS[0];
+  }, [activeVolunteerOverride, volunteers, currentUser]);
 
   // Notification helper
   const addNotification = useCallback((notif: Omit<AppNotification, 'id' | 'created_at' | 'read'>) => {
@@ -168,7 +347,8 @@ export function FoodRescueProvider({ children }: { children: React.ReactNode }) 
     if (!isConfigured) return;
 
     try {
-      const [fetchedListings, fetchedPickups, fetchedHotels, fetchedNGOs, fetchedVols, fetchedScores, fetchedNews, fetchedFlags] = await Promise.all([
+      const [fetchedProfiles, fetchedListings, fetchedPickups, fetchedHotels, fetchedNGOs, fetchedVols, fetchedScores, fetchedNews, fetchedFlags] = await Promise.all([
+        masterDataService.fetchProfiles(),
         listingsService.fetchListings(),
         pickupsService.fetchPickups(),
         masterDataService.fetchHotels(),
@@ -179,12 +359,17 @@ export function FoodRescueProvider({ children }: { children: React.ReactNode }) 
         masterDataService.fetchFlags(),
       ]);
 
+      if (fetchedProfiles.length > 0) setProfiles(fetchedProfiles);
       if (fetchedListings.length > 0) setListings(fetchedListings);
       if (fetchedPickups.length > 0) setPickups(fetchedPickups);
       if (fetchedHotels.length > 0) setHotels(fetchedHotels);
       if (fetchedNGOs.length > 0) setNgos(fetchedNGOs);
       if (fetchedVols.length > 0) setVolunteers(fetchedVols);
-      if (fetchedScores.length > 0) setScores(fetchedScores);
+      if (fetchedScores.length > 0) {
+        setScores(fetchedScores);
+      } else if (fetchedHotels.length > 0) {
+        setScores(computeRealtimeScores(fetchedHotels, fetchedListings, fetchedPickups));
+      }
       if (fetchedNews.length > 0) setNews(fetchedNews);
       if (fetchedFlags.length > 0) setFlags(fetchedFlags);
     } catch (err) {
@@ -209,9 +394,21 @@ export function FoodRescueProvider({ children }: { children: React.ReactNode }) 
           const userData = await authService.getCurrentUserProfile(session.user.id);
           if (userData.profile && isMounted) {
             setCurrentUser(userData.profile);
-            if (userData.hotel) setActiveHotelOverride(userData.hotel);
-            if (userData.ngo) setActiveNGOOverride(userData.ngo);
-            if (userData.volunteer) setActiveVolunteerOverride(userData.volunteer);
+            if (typeof window !== 'undefined') {
+              localStorage.setItem('foodrescue_active_user', JSON.stringify(userData.profile));
+            }
+            if (userData.hotel) {
+              setActiveHotelOverride(userData.hotel);
+              if (typeof window !== 'undefined') localStorage.setItem('foodrescue_active_hotel', JSON.stringify(userData.hotel));
+            }
+            if (userData.ngo) {
+              setActiveNGOOverride(userData.ngo);
+              if (typeof window !== 'undefined') localStorage.setItem('foodrescue_active_ngo', JSON.stringify(userData.ngo));
+            }
+            if (userData.volunteer) {
+              setActiveVolunteerOverride(userData.volunteer);
+              if (typeof window !== 'undefined') localStorage.setItem('foodrescue_active_volunteer', JSON.stringify(userData.volunteer));
+            }
           }
         }
       } catch (err) {
@@ -223,14 +420,26 @@ export function FoodRescueProvider({ children }: { children: React.ReactNode }) 
       // Supabase Auth listener
       const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
         if (!isMounted) return;
-        if (event === 'SIGNED_IN' && session?.user) {
+        if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION') && session?.user) {
           setIsAuthenticated(true);
           const userData = await authService.getCurrentUserProfile(session.user.id);
           if (userData.profile) {
             setCurrentUser(userData.profile);
-            if (userData.hotel) setActiveHotelOverride(userData.hotel);
-            if (userData.ngo) setActiveNGOOverride(userData.ngo);
-            if (userData.volunteer) setActiveVolunteerOverride(userData.volunteer);
+            if (typeof window !== 'undefined') {
+              localStorage.setItem('foodrescue_active_user', JSON.stringify(userData.profile));
+            }
+            if (userData.hotel) {
+              setActiveHotelOverride(userData.hotel);
+              if (typeof window !== 'undefined') localStorage.setItem('foodrescue_active_hotel', JSON.stringify(userData.hotel));
+            }
+            if (userData.ngo) {
+              setActiveNGOOverride(userData.ngo);
+              if (typeof window !== 'undefined') localStorage.setItem('foodrescue_active_ngo', JSON.stringify(userData.ngo));
+            }
+            if (userData.volunteer) {
+              setActiveVolunteerOverride(userData.volunteer);
+              if (typeof window !== 'undefined') localStorage.setItem('foodrescue_active_volunteer', JSON.stringify(userData.volunteer));
+            }
           }
           await refreshData();
         } else if (event === 'SIGNED_OUT') {
@@ -238,7 +447,13 @@ export function FoodRescueProvider({ children }: { children: React.ReactNode }) 
           setActiveHotelOverride(null);
           setActiveNGOOverride(null);
           setActiveVolunteerOverride(null);
-          setCurrentUser(SEED_PROFILES[0]);
+          if (typeof window !== 'undefined') {
+            localStorage.removeItem('foodrescue_active_user');
+            localStorage.removeItem('foodrescue_active_hotel');
+            localStorage.removeItem('foodrescue_active_ngo');
+            localStorage.removeItem('foodrescue_active_volunteer');
+          }
+          setCurrentUser(DEFAULT_PUBLIC_PROFILE);
         }
       });
 
@@ -322,30 +537,45 @@ export function FoodRescueProvider({ children }: { children: React.ReactNode }) 
     }
   }, [isConfigured, listings, pickups, flags, hotels, ngos, scores, follows, kudos]);
 
-  // Role switcher helper (for testing & demo persona switching)
+  // Role switcher helper (for preview & demo persona switching)
   const switchRole = useCallback((role: UserRole) => {
+    if (isAuthenticated) {
+      addNotification({
+        user_id: currentUser.id,
+        title: 'Active Session Locked',
+        message: `You are signed in as ${currentUser.full_name} (${currentUser.role}). Please sign out if you want to test another account.`,
+        type: 'approval',
+      });
+      return;
+    }
     const match = profiles.find((p) => p.role === role);
     if (match) {
       setCurrentUser(match);
       addNotification({
         user_id: match.id,
         title: `Switched View: ${role.toUpperCase()}`,
-        message: `You are now interacting as ${match.full_name}`,
+        message: `Previewing view as ${match.full_name}`,
         type: 'approval',
       });
     }
-  }, [profiles, addNotification]);
+  }, [isAuthenticated, currentUser, profiles, addNotification]);
 
   // Sign out helper
   const signOut = useCallback(async () => {
     if (isConfigured) {
       await authService.signOut();
     }
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('foodrescue_active_user');
+      localStorage.removeItem('foodrescue_active_hotel');
+      localStorage.removeItem('foodrescue_active_ngo');
+      localStorage.removeItem('foodrescue_active_volunteer');
+    }
     setIsAuthenticated(false);
     setActiveHotelOverride(null);
     setActiveNGOOverride(null);
     setActiveVolunteerOverride(null);
-    setCurrentUser(SEED_PROFILES[3]); // default to public user on logout
+    setCurrentUser(DEFAULT_PUBLIC_PROFILE);
   }, [isConfigured]);
 
   // Real-time volunteer movement simulator (for testing active trip GPS)
@@ -357,8 +587,8 @@ export function FoodRescueProvider({ children }: { children: React.ReactNode }) 
         const updated = prev.map((pickup) => {
           if (pickup.status === 'on_the_way' && pickup.current_location) {
             changed = true;
-            const targetLat = 12.9756;
-            const targetLng = 77.6067;
+            const targetLat = 18.5362;
+            const targetLng = 73.8940;
             const curLat = pickup.current_location.lat;
             const curLng = pickup.current_location.lng;
 
@@ -414,10 +644,10 @@ export function FoodRescueProvider({ children }: { children: React.ReactNode }) 
       id: newId,
       status: 'posted',
       created_at: new Date().toISOString(),
-      lat: activeHotel.lat,
-      lng: activeHotel.lng,
+      lat: (listingData as any).lat || activeHotel.lat,
+      lng: (listingData as any).lng || activeHotel.lng,
       hotel_name: activeHotel.name,
-      hotel_address: activeHotel.address,
+      hotel_address: (listingData as any).hotel_address || activeHotel.address,
     };
 
     setListings((prev) => [newListing, ...prev]);
@@ -576,8 +806,8 @@ export function FoodRescueProvider({ children }: { children: React.ReactNode }) 
               status: 'on_the_way',
               started_at: new Date().toISOString(),
               current_location: {
-                lat: 12.9645,
-                lng: 77.6321,
+                lat: 18.5204,
+                lng: 73.8567,
                 accuracy_m: 8.5,
                 updated_at: new Date().toISOString(),
               },
@@ -808,31 +1038,8 @@ export function FoodRescueProvider({ children }: { children: React.ReactNode }) 
 
   // Full Rescue Score recomputation per PRD Section 8
   const recomputeScores = useCallback(() => {
-    setScores((prev) => {
-      return prev.map((s) => {
-        const hotelPickups = pickups.filter(
-          (p) => p.status === 'completed' && !p.voided && (p.listing?.hotel_id === s.hotel_id || s.hotel_id === 'hotel-1')
-        );
-
-        const totalPortions = hotelPickups.reduce((acc, p) => acc + (p.portions_received || 0), s.portions_rescued);
-        const count = hotelPickups.length + s.completed_pickups;
-
-        const rawScore = Math.min(99.5, s.composite + (hotelPickups.length > 0 ? 0.3 : 0));
-        let tier: 'seed' | 'sprout' | 'canopy' | 'forest' = 'seed';
-        if (rawScore >= 90) tier = 'forest';
-        else if (rawScore >= 80) tier = 'canopy';
-        else if (rawScore >= 60) tier = 'sprout';
-
-        return {
-          ...s,
-          composite: Number(rawScore.toFixed(1)),
-          completed_pickups: count,
-          portions_rescued: totalPortions,
-          tier,
-        };
-      });
-    });
-  }, [pickups]);
+    setScores(computeRealtimeScores(hotels, listings, pickups));
+  }, [hotels, listings, pickups]);
 
   // Notifications
   const markNotificationRead = useCallback((id: string) => {

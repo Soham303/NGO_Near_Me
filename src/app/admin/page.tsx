@@ -4,6 +4,7 @@ import React from 'react';
 import Link from 'next/link';
 import { useFoodRescue } from '@/lib/store';
 import { CounterTile } from '@/components/ui/CounterTile';
+import { HotelRankingsWidget } from '@/components/leaderboard/HotelRankingsWidget';
 import {
   ShieldCheck,
   Building2,
@@ -18,14 +19,19 @@ import {
 } from 'lucide-react';
 
 export default function AdminDashboardPage() {
-  const { hotels, ngos, listings, flags, scores } = useFoodRescue();
+  const { hotels, ngos, listings, flags, scores, pickups } = useFoodRescue();
 
   const pendingHotels = hotels.filter((h) => h.status === 'pending');
   const pendingNgos = ngos.filter((n) => n.status === 'pending');
   const pendingTotal = pendingHotels.length + pendingNgos.length;
 
   const openFlags = flags.filter((f) => f.status === 'open');
-  const totalRescued = scores.reduce((sum, s) => sum + s.portions_rescued, 25420);
+  const completedPickups = pickups.filter((p) => p.status === 'completed' && !p.voided);
+  const totalRescuedFromPickups = completedPickups.reduce(
+    (sum, p) => sum + (p.portions_received || p.listing?.portions_listed || 0),
+    0
+  );
+  const totalRescued = Math.max(totalRescuedFromPickups, scores.reduce((sum, s) => sum + s.portions_rescued, 0));
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-8 sm:px-6">
@@ -150,6 +156,12 @@ export default function AdminDashboardPage() {
           />
         </div>
       </div>
+
+      {/* Platform Registered Hotel Donation Standings */}
+      <HotelRankingsWidget
+        title="Registered Hotel Donation Rankings & ESG Telemetry"
+        subtitle="Platform-wide hospitality partner benchmarks computed from verified receipt handoffs."
+      />
 
       {/* Quick Navigation Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

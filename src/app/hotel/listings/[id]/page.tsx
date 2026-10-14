@@ -127,7 +127,7 @@ export default function ListingDetailPage() {
               <LeafletMap
                 listings={[listing]}
                 activePickup={relatedPickup}
-                center={[listing.lat || 12.9756, listing.lng || 77.6067]}
+                center={[listing.lat || 18.5362, listing.lng || 73.8940]}
                 zoom={14}
               />
             </div>

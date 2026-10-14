@@ -4,6 +4,7 @@ import React from 'react';
 import Link from 'next/link';
 import { useFoodRescue } from '@/lib/store';
 import { StatusTimeline } from '@/components/ui/StatusTimeline';
+import { HotelRankingsWidget } from '@/components/leaderboard/HotelRankingsWidget';
 import {
   UtensilsCrossed,
   HeartHandshake,
@@ -17,15 +18,16 @@ import {
 } from 'lucide-react';
 
 export default function NGOActivePickupsPage() {
-  const { pickups, releaseClaim, activeNGO, switchRole } = useFoodRescue();
+  const { pickups, releaseClaim, activeNGO } = useFoodRescue();
 
-  // Active NGO pickups
+  // Active NGO pickups strictly for active NGO
   const ngoPickups = pickups.filter(
-    (p) => p.ngo_id === activeNGO.id || activeNGO.id === 'ngo-1'
+    (p) => p.ngo_id === activeNGO.id
   );
 
   const activeOnes = ngoPickups.filter((p) => p.status !== 'completed' && p.status !== 'cancelled');
   const pastOnes = ngoPickups.filter((p) => p.status === 'completed');
+  const totalReceivedPortions = pastOnes.reduce((sum, p) => sum + (p.portions_received || 0), 0);
 
   const handleRelease = async (pickupId: string) => {
     if (confirm('Release this claim? The surplus food will immediately reopen for other nearby charity kitchens.')) {
@@ -114,7 +116,6 @@ export default function NGOActivePickupsPage() {
                   <div className="flex items-center gap-2 self-end sm:self-start">
                     <Link
                       href="/volunteer/active"
-                      onClick={() => switchRole('volunteer')}
                       className="px-3.5 py-2 rounded-lg bg-primary text-white text-xs font-bold hover:bg-primary-hover shadow-soft flex items-center gap-1.5 transition-all"
                     >
                       <Bike className="w-3.5 h-3.5" />
@@ -205,6 +206,14 @@ export default function NGOActivePickupsPage() {
             </div>
           ))}
         </div>
+      </div>
+
+      {/* Hotel Donor Rankings for NGOs */}
+      <div className="mt-12">
+        <HotelRankingsWidget
+          title="Top Hotel & Banquet Donors in Pune"
+          subtitle="Explore leading food donors and their verified portions rescued to coordinate future surplus pickups."
+        />
       </div>
     </div>
   );

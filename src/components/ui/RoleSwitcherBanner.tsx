@@ -70,30 +70,45 @@ export function RoleSwitcherBanner() {
           )}
 
           <span className="text-gray-300 hidden sm:inline">
-            Logged In As: <strong className="text-white">{currentUser.full_name}</strong> ({currentUser.role.toUpperCase()})
+            {isAuthenticated ? 'Active User: ' : 'Viewing As: '}
+            <strong className="text-white">{currentUser.full_name}</strong> ({currentUser.role.toUpperCase()})
           </span>
         </div>
 
         <div className="flex flex-wrap items-center gap-1.5">
-          <span className="text-gray-400 text-[11px] mr-1">Switch View:</span>
-          {roles.map((r) => {
-            const isActive = currentUser.role === r.role;
-            return (
-              <button
-                key={r.role}
-                onClick={() => switchRole(r.role)}
-                title={r.desc}
-                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
-                  isActive
-                    ? 'bg-primary text-white shadow-sm ring-1 ring-white/30 font-bold'
-                    : 'bg-gray-800 text-gray-300 hover:bg-gray-700 hover:text-white'
-                }`}
+          {!isAuthenticated ? (
+            <>
+              <span className="text-gray-400 text-[11px] mr-1">Demo Preview:</span>
+              {roles.map((r) => {
+                const isActive = currentUser.role === r.role;
+                return (
+                  <button
+                    key={r.role}
+                    onClick={() => switchRole(r.role)}
+                    title={r.desc}
+                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
+                      isActive
+                        ? 'bg-primary text-white shadow-sm ring-1 ring-white/30 font-bold'
+                        : 'bg-gray-800 text-gray-300 hover:bg-gray-700 hover:text-white'
+                    }`}
+                  >
+                    {r.icon}
+                    <span>{r.label}</span>
+                  </button>
+                );
+              })}
+            </>
+          ) : (
+            <div className="flex items-center gap-2">
+              <span className="text-emerald-400 text-[11px] font-medium">Session Active</span>
+              <Link
+                href="/auth"
+                className="px-2 py-0.5 rounded bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs transition-colors"
               >
-                {r.icon}
-                <span>{r.label}</span>
-              </button>
-            );
-          })}
+                Switch Account
+              </Link>
+            </div>
+          )}
 
           <button
             onClick={toggleTripSimulation}

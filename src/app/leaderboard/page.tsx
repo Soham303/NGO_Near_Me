@@ -148,7 +148,10 @@ export default function LeaderboardPage() {
                     <div className="flex items-center gap-2 mt-0.5 text-xs text-neutral-muted">
                       <span className="capitalize">{item.venue_type?.replace('_', ' ')}</span>
                       <span>•</span>
-                      <span>{item.portions_rescued} meals rescued</span>
+                      <span className="font-bold text-primary">{item.portions_rescued} portions donated</span>
+                      <span>(~{Math.round(item.portions_rescued * 0.45)} kg)</span>
+                      <span>•</span>
+                      <span>{item.completed_pickups || 0} rescues</span>
                       {item.streak_weeks && (
                         <>
                           <span>•</span>

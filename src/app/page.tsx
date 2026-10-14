@@ -6,6 +6,8 @@ import { useFoodRescue } from '@/lib/store';
 import { CounterTile } from '@/components/ui/CounterTile';
 import { TierBadge } from '@/components/ui/TierBadge';
 import { CountdownPill } from '@/components/ui/CountdownPill';
+import { FoodWastageAwarenessNews } from '@/components/news/FoodWastageAwarenessNews';
+import { HotelRankingsWidget } from '@/components/leaderboard/HotelRankingsWidget';
 import {
   UtensilsCrossed,
   ArrowRight,
@@ -21,7 +23,7 @@ import {
 } from 'lucide-react';
 
 export default function HomePage() {
-  const { listings, scores, news, switchRole } = useFoodRescue();
+  const { listings, scores, news, pickups } = useFoodRescue();
 
   // Top 3 Leaderboard
   const topPerformers = scores.slice(0, 3);
@@ -30,8 +32,24 @@ export default function HomePage() {
   const openListings = listings.filter((l) => l.status === 'posted');
   const totalPortionsAvailable = openListings.reduce((sum, l) => sum + l.portions_listed, 0);
 
-  // Total Rescued metric
-  const totalRescued = scores.reduce((sum, s) => sum + s.portions_rescued, 25420);
+  // Real-time verified meals rescued
+  const completedPickups = pickups.filter((p) => p.status === 'completed' && !p.voided);
+  const rescuedFromPickups = completedPickups.reduce(
+    (sum, p) => sum + (p.portions_received || p.listing?.portions_listed || 0),
+    0
+  );
+  const rescuedFromScores = scores.reduce((sum, s) => sum + s.portions_rescued, 0);
+  const totalRescued = Math.max(rescuedFromPickups, rescuedFromScores);
+
+  // Live median claim duration
+  const validClaims = pickups
+    .filter((p) => p.claimed_at && p.listing?.created_at)
+    .map((p) => Math.max(1, Math.round((new Date(p.claimed_at!).getTime() - new Date(p.listing!.created_at).getTime()) / 60000)));
+  const medianClaimTime = validClaims.length > 0
+    ? `${Math.round(validClaims.reduce((a, b) => a + b, 0) / validClaims.length)}m`
+    : '< 15m';
+
+  const emissionsAvoided = totalRescued > 0 ? `${((totalRescued * 2.5) / 1000).toFixed(1)}t` : '0.0t';
 
   return (
     <div className="w-full">
@@ -57,7 +75,6 @@ export default function HomePage() {
             <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
               <Link
                 href="/hotel/post"
-                onClick={() => switchRole('hotel')}
                 className="px-6 py-3.5 rounded-xl bg-primary text-white font-bold text-sm shadow-card hover:bg-primary-hover hover:shadow-floating transition-all flex items-center gap-2"
               >
                 <Building2 className="w-4 h-4" />
@@ -67,7 +84,6 @@ export default function HomePage() {
 
               <Link
                 href="/ngo/map"
-                onClick={() => switchRole('ngo')}
                 className="px-6 py-3.5 rounded-xl bg-white text-neutral-text border border-neutral-border font-bold text-sm shadow-soft hover:bg-neutral-bg hover:border-gray-300 transition-all flex items-center gap-2"
               >
                 <MapPin className="w-4 h-4 text-primary" />
@@ -100,14 +116,14 @@ export default function HomePage() {
               icon={<Clock className="w-6 h-6 text-accent" />}
             />
             <CounterTile
-              count="18m"
+              count={medianClaimTime}
               label="Median Claim Time"
               sublabel="From hotel posting to NGO lock"
               variant="neutral"
               icon={<Clock className="w-6 h-6 text-primary" />}
             />
             <CounterTile
-              count={`${((totalRescued * 2.5) / 1000).toFixed(1)}t`}
+              count={emissionsAvoided}
               label="CO₂ Emissions Avoided"
               sublabel="Calculated organic diversion benchmark"
               variant="neutral"
@@ -181,7 +197,6 @@ export default function HomePage() {
 
                 <Link
                   href="/ngo/map"
-                  onClick={() => switchRole('ngo')}
                   className="px-4 py-2 rounded-lg bg-primary text-white text-xs font-bold hover:bg-primary-hover shadow-soft transition-all"
                 >
                   Claim Food
@@ -192,69 +207,13 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Leaderboard Teaser Section */}
+      {/* Hotel Rankings & Leaderboard Section */}
       <section className="py-16 bg-white border-y border-neutral-border">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-8">
-            <div>
-              <span className="text-xs font-bold uppercase tracking-wider text-accent">
-                Public Transparency
-              </span>
-              <h2 className="text-2xl sm:text-3xl font-black text-neutral-text mt-1">
-                Top Food Rescue Champions
-              </h2>
-              <p className="text-xs text-neutral-muted mt-1">
-                Verified 60-day rolling Rescue Scores computed from NGO receipt receipts.
-              </p>
-            </div>
-            <Link
-              href="/leaderboard"
-              className="text-xs font-bold text-primary hover:text-primary-hover flex items-center gap-1"
-            >
-              <span>Full Leaderboard</span>
-              <ArrowRight className="w-4 h-4" />
-            </Link>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {topPerformers.map((item, idx) => (
-              <div
-                key={item.id}
-                className="bg-neutral-bg rounded-card border border-neutral-border p-6 shadow-soft flex flex-col justify-between relative overflow-hidden"
-              >
-                <div className="absolute top-3 right-3 text-4xl font-black text-gray-200 select-none">
-                  #{idx + 1}
-                </div>
-
-                <div>
-                  <div className="flex items-center gap-2 mb-2">
-                    <TierBadge tier={item.tier} size="sm" />
-                    <span className="text-xs text-neutral-muted uppercase tracking-wider">
-                      {item.venue_type}
-                    </span>
-                  </div>
-
-                  <h3 className="font-bold text-lg text-neutral-text">{item.hotel_name}</h3>
-                  <div className="mt-3 flex items-baseline gap-2">
-                    <span className="text-3xl font-black text-primary">{item.composite}</span>
-                    <span className="text-xs text-neutral-muted">Rescue Score</span>
-                  </div>
-                </div>
-
-                <div className="mt-6 pt-4 border-t border-neutral-border/60 flex items-center justify-between text-xs">
-                  <span className="text-neutral-muted">
-                    <strong className="text-neutral-text">{item.portions_rescued}</strong> meals rescued
-                  </span>
-                  <Link
-                    href={`/hotel/${item.hotel_slug}`}
-                    className="font-bold text-primary hover:underline"
-                  >
-                    View Impact &rarr;
-                  </Link>
-                </div>
-              </div>
-            ))}
-          </div>
+          <HotelRankingsWidget
+            title="Pune Registered Hotel Rankings & Donation Impact"
+            subtitle="Real-time standings of registered hospitality partners ranked by total food donated, rescue success rate, and active contributions in Pune."
+          />
         </div>
       </section>
 
@@ -315,61 +274,8 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* News & Impact Stories */}
-      <section className="py-16 bg-neutral-bg border-t border-neutral-border">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-8">
-            <div>
-              <span className="text-xs font-bold uppercase tracking-wider text-primary">
-                Community Voices
-              </span>
-              <h2 className="text-2xl sm:text-3xl font-black text-neutral-text mt-1">
-                Latest News & Milestones
-              </h2>
-            </div>
-            <Link
-              href="/news"
-              className="text-xs font-bold text-primary hover:text-primary-hover flex items-center gap-1"
-            >
-              <span>View all stories</span>
-              <ArrowRight className="w-4 h-4" />
-            </Link>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {news.slice(0, 3).map((item) => (
-              <div
-                key={item.id}
-                className="bg-white rounded-card border border-neutral-border overflow-hidden shadow-card hover:shadow-floating transition-all flex flex-col"
-              >
-                {item.image_url && (
-                  <img
-                    src={item.image_url}
-                    alt={item.title}
-                    className="w-full h-44 object-cover"
-                  />
-                )}
-                <div className="p-5 flex-1 flex flex-col justify-between">
-                  <div>
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-muted">
-                      {item.source_name || 'FoodRescue News'}
-                    </span>
-                    <h3 className="font-bold text-neutral-text text-base mt-1 leading-snug">
-                      {item.title}
-                    </h3>
-                    <p className="text-xs text-neutral-muted mt-2 leading-relaxed line-clamp-3">
-                      {item.snippet}
-                    </p>
-                  </div>
-                  <div className="mt-4 pt-3 border-t border-neutral-border text-xs text-primary font-bold">
-                    <Link href="/news">Read story &rarr;</Link>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
+      {/* Real-time Food Wastage Awareness News Feed */}
+      <FoodWastageAwarenessNews />
 
       {/* Footer */}
       <footer className="bg-neutral-text text-white py-12 border-t border-gray-800">
