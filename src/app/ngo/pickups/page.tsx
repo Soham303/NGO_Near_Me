@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 
 export default function NGOActivePickupsPage() {
-  const { pickups, releaseClaim, activeNGO, switchRole } = useFoodRescue();
+  const { pickups, releaseClaim, activeNGO } = useFoodRescue();
 
   // Active NGO pickups
   const ngoPickups = pickups.filter(
@@ -114,7 +114,6 @@ export default function NGOActivePickupsPage() {
                   <div className="flex items-center gap-2 self-end sm:self-start">
                     <Link
                       href="/volunteer/active"
-                      onClick={() => switchRole('volunteer')}
                       className="px-3.5 py-2 rounded-lg bg-primary text-white text-xs font-bold hover:bg-primary-hover shadow-soft flex items-center gap-1.5 transition-all"
                     >
                       <Bike className="w-3.5 h-3.5" />

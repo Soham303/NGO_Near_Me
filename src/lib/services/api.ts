@@ -651,6 +651,25 @@ export const pickupsService = {
 // ==========================================
 
 export const masterDataService = {
+  async fetchProfiles(): Promise<Profile[]> {
+    if (!isSupabaseConfigured()) return [];
+    try {
+      const { data, error } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
+      if (error || !data) return [];
+      return data.map((p: any) => ({
+        id: p.id,
+        role: p.role,
+        full_name: p.full_name,
+        email: p.email || '',
+        phone: p.phone,
+        avatar_url: p.avatar_url,
+        created_at: p.created_at,
+      }));
+    } catch {
+      return [];
+    }
+  },
+
   async fetchHotels(): Promise<Hotel[]> {
     if (!isSupabaseConfigured()) return [];
     const { data } = await supabase.from('hotels').select('*').order('name');

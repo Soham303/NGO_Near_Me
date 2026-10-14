@@ -106,11 +106,21 @@ const FoodRescueContext = createContext<FoodRescueContextType | undefined>(undef
 
 const STORAGE_KEY = 'foodrescue_state_v2';
 
+export const DEFAULT_PUBLIC_PROFILE: Profile = {
+  id: 'guest-public',
+  role: 'public',
+  full_name: 'Public Supporter',
+  email: 'guest@foodrescue.org',
+  phone: '',
+  avatar_url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+  created_at: new Date().toISOString(),
+};
+
 export function FoodRescueProvider({ children }: { children: React.ReactNode }) {
   const isConfigured = useMemo(() => isSupabaseConfigured(), []);
 
-  // Auth & Session state
-  const [currentUser, setCurrentUser] = useState<Profile>(SEED_PROFILES[0]);
+  // Auth & Session state - default to neutral public guest
+  const [currentUser, setCurrentUser] = useState<Profile>(DEFAULT_PUBLIC_PROFILE);
   const [activeHotelOverride, setActiveHotelOverride] = useState<Hotel | null>(null);
   const [activeNGOOverride, setActiveNGOOverride] = useState<NGO | null>(null);
   const [activeVolunteerOverride, setActiveVolunteerOverride] = useState<Volunteer | null>(null);
@@ -147,10 +157,74 @@ export function FoodRescueProvider({ children }: { children: React.ReactNode }) 
   const [kudos, setKudos] = useState<{ userId: string; hotelId: string; date: string }[]>([]);
   const [isSimulatingTrip, setIsSimulatingTrip] = useState(true);
 
-  // Determine active entities
-  const activeHotel = activeHotelOverride || hotels.find((h) => h.owner_id === currentUser.id) || hotels[0];
-  const activeNGO = activeNGOOverride || ngos.find((n) => n.owner_id === currentUser.id) || ngos[0];
-  const activeVolunteer = activeVolunteerOverride || volunteers.find((v) => v.profile_id === currentUser.id) || volunteers[0];
+  // Determine active entities cleanly without leaking other profiles
+  const activeHotel = useMemo(() => {
+    if (activeHotelOverride) return activeHotelOverride;
+    const owned = hotels.find((h) => h.owner_id === currentUser.id);
+    if (owned) return owned;
+    if (currentUser.role === 'hotel') {
+      return {
+        id: 'hotel-' + currentUser.id,
+        owner_id: currentUser.id,
+        name: currentUser.full_name ? `${currentUser.full_name}'s Kitchen` : 'Registered Kitchen Partner',
+        slug: 'hotel-' + currentUser.id.substring(0, 6),
+        venue_type: 'hotel' as const,
+        address: 'Pune, Maharashtra',
+        lat: 18.5204,
+        lng: 73.8567,
+        rooms: 50,
+        seats: 100,
+        banquet_capacity: 300,
+        events_per_month: 4,
+        operating_days_per_week: 7,
+        status: 'approved' as const,
+        public_listing: true,
+        created_at: new Date().toISOString(),
+      };
+    }
+    return hotels[0] || SEED_HOTELS[0];
+  }, [activeHotelOverride, hotels, currentUser]);
+
+  const activeNGO = useMemo(() => {
+    if (activeNGOOverride) return activeNGOOverride;
+    const owned = ngos.find((n) => n.owner_id === currentUser.id);
+    if (owned) return owned;
+    if (currentUser.role === 'ngo') {
+      return {
+        id: 'ngo-' + currentUser.id,
+        owner_id: currentUser.id,
+        name: currentUser.full_name ? `${currentUser.full_name}'s NGO` : 'Community Food Bank Pune',
+        registration_no: 'NGO-PUN-' + currentUser.id.substring(0, 4).toUpperCase(),
+        address: 'Pune, Maharashtra',
+        lat: 18.5204,
+        lng: 73.8567,
+        capacity_portions: 400,
+        service_radius_km: 15,
+        trust_score: 1.0,
+        status: 'approved' as const,
+        created_at: new Date().toISOString(),
+      };
+    }
+    return ngos[0] || SEED_NGOS[0];
+  }, [activeNGOOverride, ngos, currentUser]);
+
+  const activeVolunteer = useMemo(() => {
+    if (activeVolunteerOverride) return activeVolunteerOverride;
+    const owned = volunteers.find((v) => v.profile_id === currentUser.id);
+    if (owned) return owned;
+    if (currentUser.role === 'volunteer') {
+      return {
+        id: 'vol-' + currentUser.id,
+        profile_id: currentUser.id,
+        ngo_id: activeNGO.id || 'ngo-1',
+        name: currentUser.full_name,
+        phone: currentUser.phone || '',
+        vehicle: 'Two-wheeler with Thermal Box',
+        active: true,
+      };
+    }
+    return volunteers[0] || SEED_VOLUNTEERS[0];
+  }, [activeVolunteerOverride, volunteers, currentUser]);
 
   // Notification helper
   const addNotification = useCallback((notif: Omit<AppNotification, 'id' | 'created_at' | 'read'>) => {
@@ -168,7 +242,8 @@ export function FoodRescueProvider({ children }: { children: React.ReactNode }) 
     if (!isConfigured) return;
 
     try {
-      const [fetchedListings, fetchedPickups, fetchedHotels, fetchedNGOs, fetchedVols, fetchedScores, fetchedNews, fetchedFlags] = await Promise.all([
+      const [fetchedProfiles, fetchedListings, fetchedPickups, fetchedHotels, fetchedNGOs, fetchedVols, fetchedScores, fetchedNews, fetchedFlags] = await Promise.all([
+        masterDataService.fetchProfiles(),
         listingsService.fetchListings(),
         pickupsService.fetchPickups(),
         masterDataService.fetchHotels(),
@@ -179,6 +254,7 @@ export function FoodRescueProvider({ children }: { children: React.ReactNode }) 
         masterDataService.fetchFlags(),
       ]);
 
+      if (fetchedProfiles.length > 0) setProfiles(fetchedProfiles);
       if (fetchedListings.length > 0) setListings(fetchedListings);
       if (fetchedPickups.length > 0) setPickups(fetchedPickups);
       if (fetchedHotels.length > 0) setHotels(fetchedHotels);
@@ -223,7 +299,7 @@ export function FoodRescueProvider({ children }: { children: React.ReactNode }) 
       // Supabase Auth listener
       const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
         if (!isMounted) return;
-        if (event === 'SIGNED_IN' && session?.user) {
+        if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION') && session?.user) {
           setIsAuthenticated(true);
           const userData = await authService.getCurrentUserProfile(session.user.id);
           if (userData.profile) {
@@ -238,7 +314,7 @@ export function FoodRescueProvider({ children }: { children: React.ReactNode }) 
           setActiveHotelOverride(null);
           setActiveNGOOverride(null);
           setActiveVolunteerOverride(null);
-          setCurrentUser(SEED_PROFILES[0]);
+          setCurrentUser(DEFAULT_PUBLIC_PROFILE);
         }
       });
 
@@ -322,19 +398,28 @@ export function FoodRescueProvider({ children }: { children: React.ReactNode }) 
     }
   }, [isConfigured, listings, pickups, flags, hotels, ngos, scores, follows, kudos]);
 
-  // Role switcher helper (for testing & demo persona switching)
+  // Role switcher helper (for preview & demo persona switching)
   const switchRole = useCallback((role: UserRole) => {
+    if (isAuthenticated) {
+      addNotification({
+        user_id: currentUser.id,
+        title: 'Active Session Locked',
+        message: `You are signed in as ${currentUser.full_name} (${currentUser.role}). Please sign out if you want to test another account.`,
+        type: 'approval',
+      });
+      return;
+    }
     const match = profiles.find((p) => p.role === role);
     if (match) {
       setCurrentUser(match);
       addNotification({
         user_id: match.id,
         title: `Switched View: ${role.toUpperCase()}`,
-        message: `You are now interacting as ${match.full_name}`,
+        message: `Previewing view as ${match.full_name}`,
         type: 'approval',
       });
     }
-  }, [profiles, addNotification]);
+  }, [isAuthenticated, currentUser, profiles, addNotification]);
 
   // Sign out helper
   const signOut = useCallback(async () => {
@@ -345,7 +430,7 @@ export function FoodRescueProvider({ children }: { children: React.ReactNode }) 
     setActiveHotelOverride(null);
     setActiveNGOOverride(null);
     setActiveVolunteerOverride(null);
-    setCurrentUser(SEED_PROFILES[3]); // default to public user on logout
+    setCurrentUser(DEFAULT_PUBLIC_PROFILE);
   }, [isConfigured]);
 
   // Real-time volunteer movement simulator (for testing active trip GPS)

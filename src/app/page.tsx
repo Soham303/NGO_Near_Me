@@ -21,7 +21,7 @@ import {
 } from 'lucide-react';
 
 export default function HomePage() {
-  const { listings, scores, news, switchRole } = useFoodRescue();
+  const { listings, scores, news } = useFoodRescue();
 
   // Top 3 Leaderboard
   const topPerformers = scores.slice(0, 3);
@@ -57,7 +57,6 @@ export default function HomePage() {
             <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
               <Link
                 href="/hotel/post"
-                onClick={() => switchRole('hotel')}
                 className="px-6 py-3.5 rounded-xl bg-primary text-white font-bold text-sm shadow-card hover:bg-primary-hover hover:shadow-floating transition-all flex items-center gap-2"
               >
                 <Building2 className="w-4 h-4" />
@@ -67,7 +66,6 @@ export default function HomePage() {
 
               <Link
                 href="/ngo/map"
-                onClick={() => switchRole('ngo')}
                 className="px-6 py-3.5 rounded-xl bg-white text-neutral-text border border-neutral-border font-bold text-sm shadow-soft hover:bg-neutral-bg hover:border-gray-300 transition-all flex items-center gap-2"
               >
                 <MapPin className="w-4 h-4 text-primary" />
@@ -181,7 +179,6 @@ export default function HomePage() {
 
                 <Link
                   href="/ngo/map"
-                  onClick={() => switchRole('ngo')}
                   className="px-4 py-2 rounded-lg bg-primary text-white text-xs font-bold hover:bg-primary-hover shadow-soft transition-all"
                 >
                   Claim Food
