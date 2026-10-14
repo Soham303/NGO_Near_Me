@@ -12,7 +12,7 @@ spring:
     # Uses connection pooling and SSL mode required by Supabase
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://db.djcwmdkenwcmsbcaqknc.supabase.co:5432/postgres?sslmode=require}
     username: ${SPRING_DATASOURCE_USERNAME:postgres}
-    password: ${SPRING_DATASOURCE_PASSWORD:postgres}
+    password: ${SPRING_DATASOURCE_PASSWORD:Soham@2007_1}
     driver-class-name: org.postgresql.Driver
     hikari:
       maximum-pool-size: 10
