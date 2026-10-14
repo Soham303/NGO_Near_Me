@@ -644,10 +644,10 @@ export function FoodRescueProvider({ children }: { children: React.ReactNode }) 
       id: newId,
       status: 'posted',
       created_at: new Date().toISOString(),
-      lat: activeHotel.lat,
-      lng: activeHotel.lng,
+      lat: (listingData as any).lat || activeHotel.lat,
+      lng: (listingData as any).lng || activeHotel.lng,
       hotel_name: activeHotel.name,
-      hotel_address: activeHotel.address,
+      hotel_address: (listingData as any).hotel_address || activeHotel.address,
     };
 
     setListings((prev) => [newListing, ...prev]);
